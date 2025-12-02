@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nicolas Gonçalves — Portfólio</title>
+   <style>
+    :root{
+      --bg:#1a1a1a;
+      --card:#242424;
+      --muted:#bfbfbf;
+      --accent:#ffd700;
+      --accent-contrast:#1a1a1a;
+      --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--bg);
+      color:#eee;
+    }
+    a{color:var(--accent);text-decoration:none}
+    header{
+      display:flex;align-items:center;gap:20px;
+      padding:20px 32px;background:transparent;
+      position:sticky;top:0;
+      backdrop-filter:blur(6px);
+      z-index:20;
+    }
+
+    .logo{display:flex;align-items:center;gap:12px}
+    .brand{font-weight:700;font-size:18px}
+    .subbrand{font-size:12px;color:var(--muted)}
+
+    nav{margin-left:auto;display:flex;gap:12px}
+    nav a{padding:8px 12px;border-radius:10px;background:transparent;color:var(--muted);font-size:14px}
+    nav a:hover{background:var(--glass);color:#fff}
+
+    .container{max-width:1100px;margin:28px auto;padding:16px}
+    .hero{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:center}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      border:1px solid rgba(255,255,255,0.04);
+      padding:22px;
+      border-radius:var(--radius);
+      box-shadow:0 6px 20px rgba(0,0,0,0.6)
+    }
+
+    .intro h1{margin:0 0 6px;font-size:32px}
+    .intro p{margin:0 0 16px;color:var(--muted)}
+    .cta{display:flex;gap:8px}
+    .btn{background:var(--accent);color:var(--accent-contrast);padding:10px 14px;border-radius:10px;font-weight:600;border:none;cursor:pointer}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+    .profile-card{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center}
+    .avatar{width:120px;height:120px;border-radius:50%;background:linear-gradient(135deg,#333,#111);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:34px;color:var(--muted);border:3px solid rgba(255,255,255,0.03)}
+    .contact{font-size:14px;color:var(--muted)}
+
+    .grid-2{display:grid;grid-template-columns:1fr 380px;gap:20px;margin-top:22px}
+
+    section h2{margin:0 0 12px;font-size:18px}
+    .experience-item{padding:12px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border:1px solid rgba(255,255,255,0.03);margin-bottom:10px}
+    .meta{color:var(--muted);font-size:13px}
+
+    .skills{display:flex;flex-wrap:wrap;gap:8px}
+    .skill{padding:8px 10px;border-radius:999px;background:#0f0f0f;border:1px solid rgba(255,255,255,0.04);font-size:13px}
+
+    footer{margin-top:40px;padding:20px;text-align:center;color:var(--muted)}
+
+    @media(max-width:900px){
+      .hero{grid-template-columns:1fr}
+      .grid-2{grid-template-columns:1fr}
+      nav{display:none}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <div style="display:flex;flex-direction:column">
+        <div class="brand">HDL Contabilidade</div>
+        <div class="subbrand">&nbsp;Consultoria & Contato</div>
+      </div>
+      <div style="width:1px;height:36px;background:rgba(255,255,255,0.04)"></div>
+      <div style="display:flex;flex-direction:column">
+        <div style="font-weight:700">Vector Soluções Digitais</div>
+        <div class="subbrand">Desenvolvimento & Automação</div>
+      </div>
+    </div>
+    <nav>
+      <a href="#about">Sobre</a>
+      <a href="#experience">Experiência</a>
+      <a href="#projects">Projetos</a>
+      <a href="#skills">Skills</a>
+      <a href="#contact">Contato</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div class="card intro">
+        <h1>Nicolas Pereira Lucas Gonçalves</h1>
+        <p>Desenvolvedor Fullstack — Automação de Processos · APIs RESTful · Integração de Sistemas</p>
+        <p style="color:var(--muted)">Atualmente na <strong>Vector Soluções Digitais</strong> como Analista de Processos e Desenvolvedor (jun/2025 – atual). Experiência com Java, TypeScript, Spring Boot, React e Node.js.</p>
+        <div class="cta">
+          <button class="btn" onclick="location.href='#contact'">Entrar em contato</button>
+          <button class="btn-ghost" onclick="window.open('https://github.com/Nicolasplgn','_blank')">Ver GitHub</button>
+                    <button class="btn-ghost" onclick="window.open('https://github.com/Nicolasplg29','_blank')">Ver GitHub</button>
+
+        </div>
+
+        <div style="margin-top:18px;color:var(--muted)">
+          <strong>Resumo rápido:</strong>
+          <p style="margin:6px 0 0">Automação de processos, criação de APIs, integração de sistemas, manutenção de infraestruturas e desenvolvimento de soluções internas.</p>
+        </div>
+      </div>
+
+      <aside class="card profile-card">
+        <div class="avatar">NG</div>
+        <div style="font-weight:700">Nicolas Gonçalves</div>
+        <div class="contact">Sarandi - PR</div>
+        <div class="contact">(44) 99715-9587</div>
+        <div class="contact">nicolasplgoncalves@gmail.com</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <a class="btn-ghost" href="https://linkedin.com/in/nicolas-pereira-lucas-goncalves-4466b5326" target="_blank">LinkedIn</a>
+          <a class="btn-ghost" href="https://github.com/Nicolasplgn" target="_blank">GitHub</a>
+           <a class="btn-ghost" href="https://github.com/Nicolasplg29" target="_blank">GitHub</a>
+        </div>
+      </aside>
+    </section>
+
+    <div class="grid-2">
+      <div>
+        <section id="about" class="card">
+          <h2>Sobre</h2>
+          <p style="color:var(--muted);margin-top:6px">Desenvolvedor Fullstack apaixonado por tecnologia, com experiência prática em automação de processos, APIs RESTful, integração de sistemas e manutenção de infraestruturas web. Atua com linguagens como Java, TypeScript e JavaScript e frameworks como Spring Boot, React e Node.js. Focado em aprendizado contínuo e entrega de soluções eficientes.</p>
+        </section>
+
+        <section id="experience" class="card" style="margin-top:14px">
+          <h2>Experiência Profissional</h2>
+
+          <div class="experience-item">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong>Vector Soluções Digitais</strong>
+              <span class="meta">jun/2025 – atual</span>
+            </div>
+            <div class="meta">Analista de Processos de TI e Desenvolvedor</div>
+            <p style="color:var(--muted);margin-top:8px">Análise e automação de processos no sistema Tareffa; desenvolvimento de soluções internas; criação de robôs de atendimento (DigSac) e otimização de fluxos.</p>
+          </div>
+
+          <div class="experience-item">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong>SG Sistemas</strong>
+              <span class="meta">fev/2025 – jun/2025</span>
+            </div>
+            <div class="meta">Analista de Suporte Web</div>
+            <p style="color:var(--muted);margin-top:8px">Atendimento técnico, configuração e monitoramento de servidores Linux, análise de logs e suporte às integrações.</p>
+          </div>
+
+          <div class="experience-item">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong>Prefeitura de Sarandi</strong>
+              <span class="meta">2023 – 2024</span>
+            </div>
+            <div class="meta">Chefe da Divisão de Informática</div>
+            <p style="color:var(--muted);margin-top:8px">Gestão de infraestrutura, suporte técnico e manutenção de sistemas internos.</p>
+          </div>
+
+          <div class="experience-item">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong>TCCC – Empresa de Ônibus de Maringá</strong>
+              <span class="meta">2021 – 2023</span>
+            </div>
+            <div class="meta">Auxiliar de Escritório</div>
+            <p style="color:var(--muted);margin-top:8px">Apoio administrativo e implementação de melhorias em processos internos.</p>
+          </div>
+
+        </section>
+
+        <section id="projects" class="card" style="margin-top:14px">
+          <h2>Projetos Relevantes</h2>
+          <ul style="color:var(--muted);margin:8px 0 0;padding-left:18px">
+            <li><strong>Kanban API (Spring Boot + JWT)</strong> — API REST com autenticação JWT, CRUD e relatórios.</li>
+            <li><strong>Sistema de Suporte Operacional</strong> — API RESTful para monitoramento de incidentes.</li>
+            <li><strong>Livraria Digital (NestJS + TypeORM)</strong> — Gerenciamento de livros, autores e avaliações.</li>
+            <li><strong>PDV WAVE</strong> — Frente de caixa online com contingência usando IndexedDB.</li>
+            <li><strong>Sistema de Agenda de Reunião</strong> — Gestão de reuniões e atas.</li>
+          </ul>
+        </section>
+
+      </div>
+
+      <aside>
+        <section id="skills" class="card">
+          <h2>Competências Técnicas</h2>
+          <div class="skills" style="margin-top:8px">
+            <div class="skill">Java</div>
+            <div class="skill">TypeScript</div>
+            <div class="skill">JavaScript</div>
+            <div class="skill">Spring Boot</div>
+            <div class="skill">React</div>
+            <div class="skill">Node.js / Express</div>
+            <div class="skill">MySQL</div>
+            <div class="skill">Linux</div>
+            <div class="skill">APIs RESTful</div>
+            <div class="skill">Testes (JUnit)</div>
+          </div>
+
+          <h2 style="margin-top:14px">Idiomas</h2>
+          <p class="meta">Português: Nativo · Inglês: Avançado (leitura técnica e conversação)</p>
+
+          <h2 style="margin-top:14px">Formação</h2>
+          <p class="meta">Engenharia de Software — Unicesumar (2023 – 2026) | 6º semestre</p>
+
+          <h2 style="margin-top:14px">Certificações</h2>
+          <p class="meta">Udemy (Java, MySQL, HTML/CSS, JavaScript, TypeScript) · Microsoft Office Intermediário (SEST SENAT)</p>
+        </section>
+
+        <section id="contact" class="card" style="margin-top:14px">
+          <h2>Contato</h2>
+          <p style="color:var(--muted);margin-top:6px">Email: <strong id="email">nicolasplgoncalves@gmail.com</strong> <button class="btn-ghost" onclick="copyEmail()">Copiar</button></p>
+          <p style="color:var(--muted)">Telefone: <strong>(44) 99715-9587</strong></p>
+
+          <form onsubmit="event.preventDefault();alert('Obrigado! Envie-me um e-mail ou acesse o GitHub/LinkedIn.');" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+            <input placeholder="Seu nome" style="padding:10px;border-radius:8px;background:#0f0f0f;border:1px solid rgba(255,255,255,0.04);color:#fff" required>
+            <input placeholder="Seu email" style="padding:10px;border-radius:8px;background:#0f0f0f;border:1px solid rgba(255,255,255,0.04);color:#fff" required>
+            <textarea placeholder="Mensagem" rows="4" style="padding:10px;border-radius:8px;background:#0f0f0f;border:1px solid rgba(255,255,255,0.04);color:#fff" required></textarea>
+            <button class="btn">Enviar (simulado)</button>
+          </form>
+        </section>
+      </aside>
+    </div>
+
+    <footer>
+      <div style="max-width:900px;margin:0 auto">Feito por <strong>Nicolas Gonçalves</strong> — Desenvolvedor Fullstack · © <span id="year"></span></div>
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+    function copyEmail(){
+      const txt = document.getElementById('email').textContent;
+      navigator.clipboard?.writeText(txt).then(()=>{
+        alert('Email copiado: ' + txt);
+      }).catch(()=>{
+        prompt('Copie o email:', txt);
+      });
+    }
+  </script>
+</body>
+</html>

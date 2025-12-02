@@ -1,0 +1,16 @@
+# Dependências do Node (Pesado, não sobe)
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Arquivos de Ambiente (Senhas, não sobe)
+.env
+backend/.env
+
+# Builds de produção
+dist/
+build/
+
+# Logs e Arquivos de Sistema
+*.log
+.DS_Store
