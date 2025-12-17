@@ -13,7 +13,10 @@ export const AuthProvider = ({ children }) => {
     const storedToken = localStorage.getItem('hdl_token');
 
     if (storedUser && storedToken) {
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      // Garante que o role esteja em minúsculo para as comparações do frontend
+      parsedUser.role = parsedUser.role ? parsedUser.role.toLowerCase() : 'client';
+      setUser(parsedUser);
       api.defaults.headers.Authorization = `Bearer ${storedToken}`;
     }
     setLoading(false);
@@ -23,6 +26,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/login', { email, password });
       const { user, token } = response.data;
+      
+      // Normaliza o role para minúsculo
+      user.role = user.role.toLowerCase();
+
       setUser(user);
       localStorage.setItem('hdl_user', JSON.stringify(user));
       localStorage.setItem('hdl_token', token);

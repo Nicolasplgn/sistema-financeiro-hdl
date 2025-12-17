@@ -35,6 +35,16 @@ CREATE TABLE users (
         FOREIGN KEY (group_id) REFERENCES company_groups(id)
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    user_name VARCHAR(100),
+    action VARCHAR(50),
+    details TEXT,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE monthly_entries (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     company_id          BIGINT UNSIGNED NOT NULL,
