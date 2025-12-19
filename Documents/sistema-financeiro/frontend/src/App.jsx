@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, DollarSign, TrendingUp, Building2, 
   ChevronLeft, ChevronRight, LogOut, Users, ShieldAlert,
-  UserCircle, FileText, XCircle // Adicionei XCircle para o botão
+  UserCircle, FileText, XCircle 
 } from 'lucide-react';
+
+// IMPORTAÇÃO CORRIGIDA: Nome exato do arquivo
+import logoSCE from './assets/logo-sce.png';
 
 // Importação das Páginas
 import Dashboard from './pages/Dashboard';
@@ -44,7 +47,6 @@ const App = () => {
     else localStorage.removeItem('hdl_company_id');
   }, [selectedCompanyId]);
 
-  // Logout Geral (Sair do Sistema)
   const handleLogout = () => {
     setUser(null);
     setSelectedCompanyId(null);
@@ -52,11 +54,10 @@ const App = () => {
     window.location.reload();
   };
 
-  // --- NOVA FUNÇÃO: SAIR APENAS DA EMPRESA ---
   const handleDisconnectCompany = () => {
-    setSelectedCompanyId(null); // Zera a empresa
-    localStorage.removeItem('hdl_company_id'); // Remove do cache
-    setActiveTab('companies'); // Redireciona para a tela de seleção
+    setSelectedCompanyId(null);
+    localStorage.removeItem('hdl_company_id');
+    setActiveTab('companies');
   };
 
   const SidebarItem = ({ id, icon: Icon, label }) => (
@@ -87,28 +88,27 @@ const App = () => {
       
       {/* SIDEBAR */}
       <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 h-screen fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-slate-800 shadow-2xl`}>
-      <div className="h-20 flex items-center justify-center border-b border-slate-800 relative shrink-0">
-  <div className="flex items-center gap-3 overflow-hidden px-4">
-    {/* Ícone Quadrado (A sigla S) */}
-    <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-900/50 flex-shrink-0">
-      S
-    </div>
-    
-    {!isSidebarCollapsed && (
-      <div className="flex flex-col animate-fade-in whitespace-nowrap">
-        {/* Nome Principal */}
-        <span className="text-white font-bold text-base leading-none">SCE</span>
-        {/* Subtítulo menor */}
-        <span className="text-blue-500 text-[10px] font-bold tracking-widest">ENTERPRISES</span>
-      </div>
-    )}
-  </div>
+        
+        {/* HEADER DA SIDEBAR COM LOGO (TRANSPARENTE) */}
+        <div className="h-24 flex items-center justify-center border-b border-slate-800 relative shrink-0">
+          <div className={`flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}>
+            <img 
+              src={logoSCE} 
+              alt="SCE Logo" 
+              className={`object-contain transition-all duration-300 
+                ${isSidebarCollapsed ? 'w-10 h-10' : 'h-14 w-auto'}`
+              } 
+            />
+          </div>
 
-  {/* Botão de abrir/fechar continua aqui... */}
-  <button onClick={() => setSidebarCollapsed(!isSidebarCollapsed)} className="...">
-    {isSidebarCollapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
-  </button>
-</div>
+          <button 
+            onClick={() => setSidebarCollapsed(!isSidebarCollapsed)} 
+            className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-lg border border-slate-800 hover:bg-blue-500 transition z-50"
+          >
+            {isSidebarCollapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto overflow-x-hidden py-6 px-3 space-y-2 scrollbar-thin scrollbar-thumb-slate-700">
           {!isSidebarCollapsed && <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 animate-fade-in">Principal</p>}
           <SidebarItem id="dashboard" icon={LayoutDashboard} label="Dashboard" />
@@ -159,13 +159,11 @@ const App = () => {
                 {activeTab === 'audit' && 'Logs de Segurança'}
               </h2>
               
-              {/* STATUS DA EMPRESA + BOTÃO DE TROCAR */}
               {selectedCompanyId ? (
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit border border-emerald-100">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Empresa Conectada
                   </span>
-                  {/* BOTÃO DE SAIR DA EMPRESA */}
                   <button 
                     onClick={handleDisconnectCompany}
                     className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-wide"

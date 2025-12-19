@@ -4,13 +4,13 @@ import {
   Wallet, TrendingUp, TrendingDown, Building2, Printer, 
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
   RotateCcw, BarChart3, Layers, AlertTriangle, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, ArrowRight, Trophy, Medal, FileCode
+  Users, ShoppingBag, Trophy, Medal, FileCode
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import * as XLSX from 'xlsx'; // Certifique-se de ter rodado: npm install xlsx
+import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, 
   BarElement, Title, Tooltip, Legend, ArcElement, Filler
@@ -24,8 +24,6 @@ const RankingItem = ({ rank, name, value, maxValue, type }) => {
   const isClient = type === 'client';
   const colorBar = isClient ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-rose-500 to-orange-400';
   const colorText = isClient ? 'text-emerald-700' : 'text-rose-700';
-  const colorBgIcon = isClient ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600';
-  const initials = name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '??';
   
   let RankIcon = null;
   let rankColor = 'bg-slate-100 text-slate-500';
@@ -109,84 +107,198 @@ const Dashboard = ({ companyId, apiBase }) => {
     fetchData();
   }, [companyId, period, BASE_URL]);
 
-  // --- 1. EXPORTAÇÃO EXCEL (ATUALIZADA) ---
+  // Exportações
   const handleExportExcel = () => {
     if (!reportData || !reportData.months.length) return alert("Sem dados para exportar.");
-    
     const dataToExport = reportData.months.map(m => ({
-      'Mês': m.monthKey,
-      'Receita Bruta': m.totalRevenue,
-      'Impostos': m.totalTaxes,
-      'Compras (Custos)': m.totalPurchases,
-      'Despesas Operacionais': m.totalExpenses,
-      'Lucro Líquido': m.profit,
+      'Mês': m.monthKey, 'Receita Bruta': m.totalRevenue, 'Impostos': m.totalTaxes, 
+      'Compras': m.totalPurchases, 'Despesas': m.totalExpenses, 'Lucro Líquido': m.profit,
       'Margem %': m.totalRevenue > 0 ? ((m.profit / m.totalRevenue) * 100).toFixed(2) + '%' : '0%'
     }));
-
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório SCE");
-    // Nome do arquivo com a marca
     XLSX.writeFile(workbook, `SCE_Relatorio_${period.start}.xlsx`);
   };
 
-  // --- 2. WHATSAPP (ATUALIZADO) ---
   const handleShareWhatsApp = () => {
-    if (!reportData?.summary) return alert("Aguarde o carregamento dos dados.");
+    if (!reportData?.summary) return alert("Aguarde o carregamento.");
     const s = reportData.summary;
     const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    
-    const text = 
-      `*📊 SCE - Start's Control Enterprises*\n` +
-      `_Resumo Financeiro - ${period.start} a ${period.end}_\n\n` +
-      `💰 *Faturamento:* ${formatCurrency(s.totalRevenue)}\n` +
-      `📉 *Saídas:* ${formatCurrency(s.totalCosts + s.totalTaxes)}\n` +
-      `----------------------------------\n` +
-      `✅ *LUCRO:* ${formatCurrency(s.totalProfit)}\n` +
-      `📈 *Margem:* ${margin}%\n\n` +
-      `_Gerado via Sistema SCE_`;
-
+    const text = `*📊 SCE Financeiro*\n_Resumo ${period.start} a ${period.end}_\n\n💰 *Fat:* ${formatCurrency(s.totalRevenue)}\n📉 *Saídas:* ${formatCurrency(s.totalCosts + s.totalTaxes)}\n✅ *Lucro:* ${formatCurrency(s.totalProfit)}\n📈 *Margem:* ${margin}%`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  // --- 3. EXPORTAÇÃO HTML (ATUALIZADA) ---
   const handleExportHTML = () => {
     if (!reportData) return;
+    
+    const s = reportData.summary;
+    const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
+
     const htmlContent = `
-      <html>
-        <head>
-          <title>Relatório SCE - Start's Control</title>
-          <style>
-            body{font-family:sans-serif;padding:30px;background:#f8fafc}
-            .card{background:white;padding:20px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.05);margin-bottom:20px}
-            h1{color:#1e293b} th{text-align:right;background:#f1f5f9;padding:10px} td{text-align:right;padding:10px;border-bottom:1px solid #eee}
-            .profit{color:#10b981;font-weight:bold} .loss{color:#ef4444;font-weight:bold}
-          </style>
-        </head>
-        <body>
-          <h1>SCE - Start's Control Enterprises</h1>
-          <p>Relatório Financeiro: ${period.start} a ${period.end}</p>
-          <div class="card">
-            <table style="width:100%">
-              <thead><tr><th style="text-align:left">Mês</th><th>Faturamento</th><th>Impostos</th><th>Custos</th><th>Lucro</th></tr></thead>
-              <tbody>
-                ${reportData.months.map(m => `<tr><td style="text-align:left"><strong>${m.monthKey}</strong></td><td>${formatCurrency(m.totalRevenue)}</td><td>${formatCurrency(m.totalTaxes)}</td><td>${formatCurrency(m.totalPurchases + m.totalExpenses)}</td><td class="${m.profit >= 0 ? 'profit' : 'loss'}">${formatCurrency(m.profit)}</td></tr>`).join('')}
-              </tbody>
-            </table>
+      <!DOCTYPE html>
+      <html lang="pt-br">
+      <head>
+        <meta charset="UTF-8">
+        <title>Relatório SCE - ${period.start}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --slate-50: #f8fafc;
+            --slate-100: #f1f5f9;
+            --slate-800: #1e293b;
+          }
+          body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--slate-50); 
+            color: var(--slate-800); 
+            margin: 0; 
+            padding: 40px; 
+          }
+          .container { max-width: 1000px; margin: 0 auto; }
+          
+          /* Header */
+          .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 40px; 
+            border-bottom: 2px solid var(--slate-100);
+            padding-bottom: 20px;
+          }
+          .header h1 { margin: 0; font-size: 28px; font-weight: 800; color: var(--primary); }
+          .header p { margin: 5px 0 0 0; color: #64748b; font-size: 14px; }
+
+          /* Cards */
+          .grid-cards { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr 1fr; 
+            gap: 20px; 
+            margin-bottom: 40px; 
+          }
+          .card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 16px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid var(--slate-100);
+          }
+          .card-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+          .card-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
+          .val-revenue { color: var(--primary); }
+          .val-profit { color: var(--success); }
+          .val-expense { color: var(--danger); }
+
+          /* Table */
+          table { 
+            width: 100%; 
+            border-collapse: separate; 
+            border-spacing: 0; 
+            background: white; 
+            border-radius: 16px; 
+            overflow: hidden; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid var(--slate-100);
+          }
+          th { 
+            background: var(--slate-100); 
+            padding: 16px; 
+            text-align: left; 
+            font-size: 12px; 
+            text-transform: uppercase; 
+            font-weight: 700; 
+            color: #64748b;
+          }
+          td { padding: 16px; border-bottom: 1px solid var(--slate-100); font-size: 14px; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover { background: #fcfcfc; }
+          
+          .text-right { text-align: right; }
+          .font-mono { font-family: monospace; font-weight: 600; }
+          .profit-pos { color: var(--success); font-weight: 700; }
+          .profit-neg { color: var(--danger); font-weight: 700; }
+
+          /* Footer */
+          .footer { margin-top: 40px; text-align: center; color: #94a3b8; font-size: 12px; }
+          
+          @media print {
+            body { padding: 0; background: white; }
+            .card { box-shadow: none; border: 1px solid #eee; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div>
+              <h1>SCE | Gestão Financeira</h1>
+              <p>Relatório Consolidado de <strong>${period.start}</strong> até <strong>${period.end}</strong></p>
+            </div>
+            <div style="text-align: right">
+              <p>Gerado em: ${new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
           </div>
-          <center style="color:#94a3b8;font-size:12px">SCE System 2025</center>
-        </body>
+
+          <div class="grid-cards">
+            <div class="card">
+              <div class="card-label">Faturamento Total</div>
+              <div class="card-value val-revenue">${formatCurrency(s.totalRevenue)}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Lucro Líquido (Margem ${margin}%)</div>
+              <div class="card-value val-profit">${formatCurrency(s.totalProfit)}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Saídas (Custos + Impostos)</div>
+              <div class="card-value val-expense">${formatCurrency(s.totalCosts + s.totalTaxes)}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Competência</th>
+                <th class="text-right">Faturamento</th>
+                <th class="text-right">Impostos</th>
+                <th class="text-right">Custos/Despesas</th>
+                <th class="text-right">Resultado Líquido</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.months.map(m => `
+                <tr>
+                  <td><strong>${m.monthKey}</strong></td>
+                  <td class="text-right font-mono">${formatCurrency(m.totalRevenue)}</td>
+                  <td class="text-right font-mono" style="color: #64748b">${formatCurrency(m.totalTaxes)}</td>
+                  <td class="text-right font-mono" style="color: #64748b">${formatCurrency(m.totalPurchases + m.totalExpenses)}</td>
+                  <td class="text-right font-mono ${m.profit >= 0 ? 'profit-pos' : 'profit-neg'}">
+                    ${formatCurrency(m.profit)}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <p>SCE - Start's Control Enterprises &copy; 2025 - Sistema de Inteligência Financeira</p>
+          </div>
+        </div>
+      </body>
       </html>
     `;
+
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `SCE_Relatorio_${period.start}.html`;
+    link.download = `Relatorio_SCE_${period.start}_a_${period.end}.html`;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
-  // --- 4. PDF (ATUALIZADO) ---
   const handleDownloadPdf = async () => {
     if (!printRef.current) return;
     setGeneratingPdf(true);
@@ -201,7 +313,7 @@ const Dashboard = ({ companyId, apiBase }) => {
 
   const openTable = (type, title, dataType = 'REVENUE') => { if (reportData) setDetailModal({ open: true, type, title, data: type === 'TAXES' ? reportData.summary : reportData.months, dataType }); };
 
-  const calculateRegimeRisk = (data, currentPeriod) => {
+  const calculateRegimeRisk = (data) => {
     if (!data?.months?.length) return null;
     const projected = data.summary.totalRevenue || 0;
     if (projected > 4800000) return { exceeds: true, percentage: 10, currentRegime: 'SIMPLES' };
@@ -214,8 +326,10 @@ const Dashboard = ({ companyId, apiBase }) => {
   if (!companyId) return <div className="h-96 flex flex-col items-center justify-center text-slate-400"><Building2 size={48} className="mb-4 opacity-20"/><p>Selecione uma empresa.</p></div>;
   if (loading || !reportData) return <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
-  const { months, summary } = reportData;
-  const regimeRisk = calculateRegimeRisk(reportData, period);
+  const { months, summary, categories } = reportData;
+  const regimeRisk = calculateRegimeRisk(reportData);
+
+  // --- DADOS DOS GRÁFICOS ---
 
   const mixedChartData = {
     labels: months.map(m => m.monthKey),
@@ -224,6 +338,19 @@ const Dashboard = ({ companyId, apiBase }) => {
       { type: 'line', label: 'Faturamento', data: months.map(m => m.totalRevenue), borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 3, tension: 0.4, fill: true, pointRadius: 4, yAxisID: 'y', order: 1 },
       { type: 'bar', label: 'Lucro Líquido', data: months.map(m => m.profit), backgroundColor: months.map(m => m.profit >= 0 ? '#10B981' : '#EF4444'), borderRadius: 4, barPercentage: 0.5, yAxisID: 'y', order: 2 }
     ]
+  };
+
+  // Lógica do Gráfico de Rosca (Categorias)
+  const categoryChartData = {
+    labels: categories?.map(c => c.name) || [],
+    datasets: [{
+        data: categories?.map(c => c.total) || [],
+        backgroundColor: [
+            '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6', '#F97316', '#06B6D4'
+        ],
+        borderWidth: 0,
+        hoverOffset: 10
+    }]
   };
 
   const stackedChartData = {
@@ -248,7 +375,6 @@ const Dashboard = ({ companyId, apiBase }) => {
 
   const commonOptions = { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] } }, y1: { position: 'right', grid: { drawOnChartArea: false } } } };
   const stackedOptions = { ...commonOptions, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } };
-  const doughnutData = { labels: ['ICMS', 'PIS', 'COFINS', 'ISS', 'IRPJ/CSLL'], datasets: [{ data: [summary.tax_icms, summary.tax_pis, summary.tax_cofins, summary.tax_iss, (summary.tax_irpj + summary.tax_csll)], backgroundColor: ['#3B82F6', '#F59E0B', '#10B981', '#8B5CF6', '#EF4444'], borderWidth: 0 }] };
 
   return (
     <div className="p-2 space-y-8 animate-fade-in max-w-7xl mx-auto pb-20">
@@ -273,18 +399,47 @@ const Dashboard = ({ companyId, apiBase }) => {
 
         {regimeRisk && regimeRisk.exceeds && (<div className="mb-8 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4"><AlertTriangle className="text-amber-600 mt-1"/><div><h3 className="font-bold text-amber-800">Alerta: {regimeRisk.currentRegime}</h3><p className="text-sm text-amber-700">Projeção excede o limite em {regimeRisk.percentage}%.</p></div></div>)}
 
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-            <div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 className="text-blue-600" size={20}/> Evolução</h3><button onClick={() => openTable('EVOLUTION', 'Mensal', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div>
+        {/* --- GRID DE GRÁFICOS (MODIFICADO PARA INCLUIR A ROSCA) --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          
+          {/* Gráfico de Evolução (Ocupa 2 colunas) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-2">
+            <div className="flex justify-between mb-4">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 className="text-blue-600" size={20}/> Evolução</h3>
+                <button onClick={() => openTable('EVOLUTION', 'Mensal', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button>
+            </div>
             <div className="h-72"><Bar data={mixedChartData} options={commonOptions} /></div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Layers className="text-indigo-600" size={20}/> Estrutura de Custos</h3><button onClick={() => openTable('EVOLUTION', 'Custos', 'EXPENSE')} className="text-xs bg-slate-50 hover:bg-indigo-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="h-64"><Bar data={stackedChartData} options={stackedOptions} /></div></div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><PieChart className="text-slate-400" size={20}/> Tributos</h3><button onClick={() => openTable('TAXES', 'Impostos', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="flex-1 flex items-center justify-center h-64"><Bar data={taxesChartData} options={stackedOptions} /></div></div>
+          {/* NOVO: Gráfico de Rosca (Ocupa 1 coluna) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-1">
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><PieChart className="text-orange-500" size={20}/> Categorias</h3>
+            <div className="h-72 flex items-center justify-center relative">
+                {categories?.length > 0 ? (
+                    <Doughnut 
+                        data={categoryChartData} 
+                        options={{
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+                            }
+                        }} 
+                    />
+                ) : (
+                    <p className="text-slate-400 text-sm">Sem dados de categorias.</p>
+                )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        </div>
+
+        {/* Demais Gráficos */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Layers className="text-indigo-600" size={20}/> Estrutura de Custos</h3><button onClick={() => openTable('EVOLUTION', 'Custos', 'EXPENSE')} className="text-xs bg-slate-50 hover:bg-indigo-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="h-64"><Bar data={stackedChartData} options={stackedOptions} /></div></div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><PieChart className="text-slate-400" size={20}/> Tributos</h3><button onClick={() => openTable('TAXES', 'Impostos', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="flex-1 flex items-center justify-center h-64"><Bar data={taxesChartData} options={stackedOptions} /></div></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col">
                 <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="text-emerald-600" size={20}/> Top Clientes (Receita)</h3><Trophy size={18} className="text-yellow-500" /></div>
                 <div className="flex-1 overflow-y-auto h-96 pr-2 scrollbar-thin">
@@ -297,7 +452,6 @@ const Dashboard = ({ companyId, apiBase }) => {
                     {rankingData.suppliers.length === 0 ? <div className="h-full flex items-center justify-center text-slate-400 text-sm">Sem dados</div> : <div className="flex flex-col gap-1">{rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />)}</div>}
                 </div>
             </div>
-          </div>
         </div>
       </div>
       <div className="flex justify-end"><button onClick={handleDownloadPdf} disabled={generatingPdf} className="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-xl font-bold text-sm transition flex items-center gap-2 shadow-lg disabled:opacity-70">{generatingPdf ? <Loader className="animate-spin" size={16}/> : <><Printer size={16} /> Baixar PDF</>}</button></div>
