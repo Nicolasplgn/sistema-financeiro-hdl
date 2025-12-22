@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // Importei o axios
 import { 
   LayoutDashboard, DollarSign, TrendingUp, Building2, 
   ChevronLeft, ChevronRight, LogOut, Users, ShieldAlert,
-  UserCircle, FileText, XCircle 
+  UserCircle, FileText, XCircle, Briefcase // Adicionei o ícone Briefcase
 } from 'lucide-react';
 
-// IMPORTAÇÃO CORRIGIDA: Nome exato do arquivo
+// IMPORTAÇÃO DA LOGO
 import logoSCE from './assets/logo-sce.png';
 
 // Importação das Páginas
@@ -34,6 +35,10 @@ const App = () => {
 
   const [user, setUser] = useState(() => getInitialState('hdl_user'));
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => getInitialState('hdl_company_id'));
+  
+  // NOVO ESTADO: Nome da Empresa Selecionada
+  const [selectedCompanyName, setSelectedCompanyName] = useState(''); 
+  
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -42,9 +47,26 @@ const App = () => {
     else localStorage.removeItem('hdl_user');
   }, [user]);
 
+  // EFEITO ATUALIZADO: Quando o ID mudar, busca o nome da empresa
   useEffect(() => {
-    if (selectedCompanyId) localStorage.setItem('hdl_company_id', JSON.stringify(selectedCompanyId));
-    else localStorage.removeItem('hdl_company_id');
+    if (selectedCompanyId) {
+      localStorage.setItem('hdl_company_id', JSON.stringify(selectedCompanyId));
+      
+      // Busca o nome da empresa na API para exibir no Header
+      axios.get(`${API_BASE}/api/companies`)
+        .then(res => {
+          const company = res.data.find(c => c.id === selectedCompanyId);
+          if (company) {
+            // Prefere o Nome Fantasia, se não tiver, usa a Razão Social
+            setSelectedCompanyName(company.trade_name || company.name);
+          }
+        })
+        .catch(err => console.error("Erro ao buscar nome da empresa", err));
+
+    } else {
+      localStorage.removeItem('hdl_company_id');
+      setSelectedCompanyName('');
+    }
   }, [selectedCompanyId]);
 
   const handleLogout = () => {
@@ -56,6 +78,7 @@ const App = () => {
 
   const handleDisconnectCompany = () => {
     setSelectedCompanyId(null);
+    setSelectedCompanyName('');
     localStorage.removeItem('hdl_company_id');
     setActiveTab('companies');
   };
@@ -89,7 +112,7 @@ const App = () => {
       {/* SIDEBAR */}
       <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 h-screen fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-slate-800 shadow-2xl`}>
         
-        {/* HEADER DA SIDEBAR COM LOGO (TRANSPARENTE) */}
+        {/* HEADER DA SIDEBAR COM LOGO */}
         <div className="h-24 flex items-center justify-center border-b border-slate-800 relative shrink-0">
           <div className={`flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}>
             <img 
@@ -158,26 +181,36 @@ const App = () => {
                 {activeTab === 'partners' && 'Parceiros & Fornecedores'}
                 {activeTab === 'audit' && 'Logs de Segurança'}
               </h2>
-              
-              {selectedCompanyId ? (
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit border border-emerald-100">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Empresa Conectada
+            </div>
+          </div>
+          
+          {/* IDENTIFICAÇÃO DA EMPRESA (LADO DIREITO) */}
+          <div className="flex items-center gap-4">
+            {selectedCompanyId ? (
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Ambiente Conectado</span>
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg shadow-sm transition-all hover:shadow-md hover:border-emerald-300 group">
+                  <div className="p-1 bg-emerald-100 rounded text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <Briefcase size={16} />
+                  </div>
+                  <span className="text-sm font-bold text-emerald-800 pr-2 border-r border-emerald-200">
+                    {selectedCompanyName || 'Carregando...'}
                   </span>
                   <button 
                     onClick={handleDisconnectCompany}
-                    className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-wide"
+                    className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-wide pl-1"
                     title="Trocar de empresa"
                   >
-                    <XCircle size={12} /> Trocar
+                    <XCircle size={14} /> Sair
                   </button>
                 </div>
-              ) : (
-                <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit border border-amber-100">
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Selecione uma empresa
-                </span>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">
+                <ShieldAlert size={18} className="text-amber-500" />
+                <span className="text-sm font-bold text-amber-700">Selecione uma Empresa</span>
+              </div>
+            )}
           </div>
         </header>
 

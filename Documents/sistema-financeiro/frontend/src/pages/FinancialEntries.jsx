@@ -70,7 +70,10 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   const [showForm, setShowForm] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
 
-  // Cálculos Totais do Header
+  // PEGA O USUÁRIO PARA LOGS
+  const user = JSON.parse(localStorage.getItem('hdl_user'));
+
+  // Cálculos Totais
   const sumValues = (obj) => Object.values(obj).reduce((a, b) => Number(a) + Number(b), 0);
   const totals = useMemo(() => {
     const totalRev = sumValues(form.revenue);
@@ -81,31 +84,20 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     return { totalRev, totalTax, totalCost, profit, margin };
   }, [form]);
 
-  // --- CORREÇÃO DO BUG: SOMA AUTOMÁTICA ---
-  // Esse efeito roda SEMPRE que 'details' mudar (adicionar ou remover)
+  // Soma Automática
   useEffect(() => {
-    // Calcula Despesas da lista
-    const sumExpenses = details
-      .filter(d => d.type === 'EXPENSE')
-      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-
-    // Calcula Receitas Extras da lista
-    const sumRevenueExtras = details
-      .filter(d => d.type === 'REVENUE')
-      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    if (details.length === 0) return;
+    const sumExpenses = details.filter(d => d.type === 'EXPENSE').reduce((acc, curr) => acc + Number(curr.amount), 0);
+    const sumRevenueExtras = details.filter(d => d.type === 'REVENUE').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
     setForm(prev => ({
         ...prev,
-        // Força o valor calculado, sobrescrevendo qualquer coisa anterior
-        expensesTotal: sumExpenses,
-        revenue: {
-            ...prev.revenue,
-            other: sumRevenueExtras
-        }
+        expensesTotal: sumExpenses > 0 ? sumExpenses : prev.expensesTotal,
+        revenue: { ...prev.revenue, other: sumRevenueExtras > 0 ? sumRevenueExtras : prev.revenue.other }
     }));
   }, [details]);
 
-  // Carrega Dados Iniciais
+  // Loads
   useEffect(() => {
     const loadData = async () => {
         if (!companyId) return;
@@ -115,7 +107,6 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                 fetch(`${BASE_URL}/api/categories`),
                 fetch(`${BASE_URL}/api/entries/history?companyId=${companyId}`)
             ]);
-            
             if(resPart.ok) setPartners(await resPart.json());
             if(resCat.ok) setCategories(await resCat.json());
             if(resHist.ok) setHistory(await resHist.json());
@@ -124,7 +115,6 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     loadData();
   }, [companyId, BASE_URL]);
 
-  // Carrega Mês Selecionado
   useEffect(() => {
     if (!companyId) return;
     const loadEntry = async () => {
@@ -132,9 +122,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       try {
         const res = await fetch(`${BASE_URL}/api/entries?companyId=${companyId}&month=${currentMonth}-01`);
         const data = await res.json();
-        
         if (data) {
-          // Preenche o formulário
           setForm({
             revenue: { resale: data.revenue_resale, product: data.revenue_product, service: data.revenue_service, rent: data.revenue_rent, other: data.revenue_other },
             taxes: { icms: data.tax_icms, difal: data.tax_difal, iss: data.tax_iss, fust: data.tax_fust, funtell: data.tax_funtell, pis: data.tax_pis, cofins: data.tax_cofins, csll: data.tax_csll, irpj: data.tax_irpj, additionalIrpj: data.tax_additional_irpj },
@@ -142,20 +130,14 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             expensesTotal: data.expenses_total || 0,
             notes: data.notes || ''
           });
-          // Carrega os detalhes do banco
           setDetails(data.details || []); 
           setShowForm(true);
         } else {
-          // Limpa se não houver dados no mês
           setForm(INITIAL_FORM_STATE);
           setDetails([]);
         }
         setStatus(null);
-      } catch (e) { 
-        setForm(INITIAL_FORM_STATE);
-        setDetails([]);
-        setStatus(null); 
-      }
+      } catch (e) { setStatus(null); }
     };
     loadEntry();
   }, [companyId, currentMonth, BASE_URL]);
@@ -167,40 +149,49 @@ const FinancialEntries = ({ companyId, apiBase }) => {
 
   const handleAddItem = () => {
     if (!newItem.category_id || !newItem.amount) return alert("Selecione Categoria e Valor");
-    // Adiciona novo item na lista
-    setDetails(prev => [...prev, { ...newItem, id: Date.now() }]);
+    setDetails([...details, { ...newItem, id: Date.now() }]);
     setNewItem({ ...newItem, amount: '' }); 
   };
 
   const handleRemoveItem = (idx) => {
-    // Remove item pelo índice
-    setDetails(prev => {
-        const newList = [...prev];
-        newList.splice(idx, 1);
-        return newList;
-    });
+    const newDetails = [...details];
+    newDetails.splice(idx, 1);
+    setDetails(newDetails);
   };
 
+  // --- ATUALIZADO: ENVIA DADOS DO USUÁRIO ---
   const handleSave = async () => {
     if (!companyId) return alert("Selecione uma empresa.");
     setStatus('saving');
     try {
-      const payload = { companyId, periodStart: `${currentMonth}-01`, periodEnd: `${currentMonth}-28`, ...form, details };
+      const payload = { 
+          companyId, 
+          periodStart: `${currentMonth}-01`, 
+          periodEnd: `${currentMonth}-28`, 
+          userId: user?.id,        // ID do usuário
+          userName: user?.full_name, // Nome do usuário
+          ...form, 
+          details 
+      };
+      
       const res = await fetch(`${BASE_URL}/api/entries`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { 
           setStatus('success'); 
           setTimeout(() => setStatus(null), 3000); 
-          // Recarrega histórico para refletir mudanças
           const resHist = await fetch(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
           if(resHist.ok) setHistory(await resHist.json());
       } else { setStatus('error'); }
     } catch (e) { setStatus('error'); }
   };
 
+  // --- ATUALIZADO: ENVIA DADOS DO USUÁRIO NO DELETE ---
   const handleDelete = async (date) => { 
-      if (!window.confirm("Tem certeza que deseja excluir este fechamento?")) return; 
+      if (!window.confirm("Tem certeza?")) return; 
       try { 
-          const res = await fetch(`${BASE_URL}/api/entries?companyId=${companyId}&month=${date}`, { method: 'DELETE' }); 
+          // Agora passamos o userId e userName via query ou body (fetch com body em delete é tricky, vamos usar query neste caso simples ou header)
+          // Para simplificar e manter compatibilidade, vamos confiar que o backend pega da sessão ou enviamos via Headers se tivesse Auth. 
+          // Como estamos sem token JWT robusto, vamos passar via Query Params para o log pegar.
+          const res = await fetch(`${BASE_URL}/api/entries?companyId=${companyId}&month=${date}&userId=${user?.id}&userName=${encodeURIComponent(user?.full_name)}`, { method: 'DELETE' }); 
           if (res.ok) { 
               const resHist = await fetch(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
               if(resHist.ok) setHistory(await resHist.json());

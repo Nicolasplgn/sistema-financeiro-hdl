@@ -5,6 +5,9 @@ const mysql = require('mysql2/promise');
 const axios = require('axios');
 const https = require('https');
 
+// IMPORTAÇÃO DOS SERVIÇOS DE INTEGRAÇÃO
+const { generateQuestorLayout, generateNFSeXML, buildPayload, fetchTaxDebts } = require('./services/questorService');
+
 const app = express();
 const PORT = 4000;
 
@@ -26,7 +29,7 @@ const pool = mysql.createPool({
   connectionLimit: 10
 });
 
-// Helper para tratar nulos no JS
+// Helper para tratar nulos
 const amountOrZero = (v) => Number(v) || 0;
 
 const logAction = async (uid, uname, act, det) => { 
@@ -35,9 +38,9 @@ const logAction = async (uid, uname, act, det) => {
   } catch(e){ console.error("Erro log:", e.message); } 
 };
 
-// ==========================================
-// 1. ROTAS UTILITÁRIAS (CNPJ e CATEGORIAS)
-// ==========================================
+// =================================================================================
+// 1. ROTAS UTILITÁRIAS
+// =================================================================================
 app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     const cnpj = req.params.cnpj.replace(/\D/g, ''); 
     if (cnpj.length !== 14) return res.status(400).json({ message: 'CNPJ inválido' });
@@ -47,7 +50,6 @@ app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     } catch (err1) {
         try {
             const r2 = await axios.get(`https://www.receitaws.com.br/v1/cnpj/${cnpj}`, { timeout: 8000, httpsAgent });
-            if (r2.data.status === "ERROR") throw new Error(r2.data.message);
             return res.json({ taxId: cnpj, name: r2.data.nome, tradeName: r2.data.fantasia || r2.data.nome, taxRegime: 'LUCRO_PRESUMIDO' });
         } catch (err2) { return res.status(500).json({ message: 'Erro ao consultar CNPJ', details: err2.message }); }
     }
@@ -60,52 +62,82 @@ app.get('/api/categories', async (req, res) => {
     } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ==========================================
+// =================================================================================
 // 2. EMPRESAS E PARCEIROS
-// ==========================================
+// =================================================================================
 app.get('/api/companies', async (req, res) => {
-    try {
-        const [rows] = await pool.execute('SELECT * FROM companies ORDER BY name ASC');
-        res.json(rows);
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    try { const [rows] = await pool.execute('SELECT * FROM companies ORDER BY name ASC'); res.json(rows); } 
+    catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.post('/api/companies', async (req, res) => {
-    const { name, trade_name, tax_id, tax_regime } = req.body;
+    const { name, trade_name, tax_id, tax_regime, userName, userId } = req.body;
     try {
-        const [result] = await pool.execute('INSERT INTO companies (name, trade_name, tax_id, tax_regime) VALUES (?, ?, ?, ?)', [name, trade_name, tax_id, tax_regime]);
+        const [result] = await pool.execute(
+            'INSERT INTO companies (name, trade_name, tax_id, tax_regime) VALUES (?, ?, ?, ?)',
+            [name, trade_name, tax_id, tax_regime]
+        );
+        
+        // Log para Criação de Empresa
+        const logUser = userName || 'Admin';
+        const logId = userId || 0;
+        const companyLabel = trade_name || name;
+        await logAction(logId, logUser, 'CREATE_COMPANY', `Criou a empresa: ${companyLabel}`);
+        
         res.json({ id: result.insertId, name, trade_name, tax_id, tax_regime });
     } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+app.put('/api/companies/:id', async (req, res) => {
+    const { name, trade_name, tax_id, tax_regime, userName, userId } = req.body;
+    try {
+        await pool.execute(
+            'UPDATE companies SET name=?, trade_name=?, tax_id=?, tax_regime=? WHERE id=?',
+            [name, trade_name, tax_id, tax_regime, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.delete('/api/companies/:id', async (req, res) => {
+    const companyId = req.params.id;
+    try {
+        const [comp] = await pool.execute('SELECT trade_name, name FROM companies WHERE id = ?', [companyId]);
+        const compName = comp[0] ? (comp[0].trade_name || comp[0].name) : `ID ${companyId}`;
+
+        await pool.execute('DELETE FROM entry_details WHERE entry_id IN (SELECT id FROM monthly_entries WHERE company_id = ?)', [companyId]);
+        await pool.execute('DELETE FROM monthly_entries WHERE company_id = ?', [companyId]);
+        await pool.execute('DELETE FROM partners WHERE company_id = ?', [companyId]);
+        await pool.execute('DELETE FROM users WHERE company_id = ?', [companyId]);
+        await pool.execute('DELETE FROM companies WHERE id=?', [companyId]);
+        
+        await logAction(0, 'Admin', 'DELETE_COMPANY', `Excluiu a empresa: ${compName}`);
+        res.json({ success: true });
+    } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.get('/api/partners/:companyId', async (req, res) => {
-    try { 
-        const [rows] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name ASC', [req.params.companyId]); 
-        res.json(rows); 
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { const [rows] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name ASC', [req.params.companyId]); res.json(rows); } 
+    catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/partners', async (req, res) => {
     const { company_id, name, tax_id, type, phone, email } = req.body;
-    try { 
-        await pool.execute('INSERT INTO partners (company_id, name, tax_id, type, phone, email) VALUES (?, ?, ?, ?, ?, ?)', [company_id, name, tax_id, type, phone, email]); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { await pool.execute('INSERT INTO partners (company_id, name, tax_id, type, phone, email) VALUES (?, ?, ?, ?, ?, ?)', [company_id, name, tax_id, type, phone, email]); res.json({ success: true }); } 
+    catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/partners/:id', async (req, res) => {
-    try { 
-        await pool.execute('DELETE FROM partners WHERE id = ?', [req.params.id]); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { await pool.execute('DELETE FROM partners WHERE id = ?', [req.params.id]); res.json({ success: true }); } 
+    catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==========================================
-// 3. LANÇAMENTOS (CRUD + HISTORY CORRIGIDO)
-// ==========================================
+// =================================================================================
+// 3. LANÇAMENTOS FINANCEIROS
+// =================================================================================
 app.get('/api/entries', async (req, res) => {
     const { companyId, month } = req.query;
-    if (!companyId) return res.status(400).json({ message: 'ID obrigatório' });
+    if (!companyId) return res.status(400).json({ message: 'ID da empresa é obrigatório' });
 
     try {
         let sql = `SELECT m.*, p1.name as top_client_name, p2.name as top_supplier_name FROM monthly_entries m LEFT JOIN partners p1 ON m.top_client_id = p1.id LEFT JOIN partners p2 ON m.top_supplier_id = p2.id WHERE m.company_id = ?`;
@@ -131,12 +163,10 @@ app.get('/api/entries', async (req, res) => {
     } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ROTA HISTORY CORRIGIDA (EVITA O NaN)
 app.get('/api/entries/history', async (req, res) => {
     const { companyId } = req.query;
     if (!companyId) return res.status(400).json({ message: 'ID obrigatório' });
     try {
-        // Usamos COALESCE para garantir que NULL vire 0 no banco
         const [rows] = await pool.execute(
             `SELECT id, period_start, 
             (COALESCE(revenue_resale,0) + COALESCE(revenue_product,0) + COALESCE(revenue_service,0) + COALESCE(revenue_rent,0) + COALESCE(revenue_other,0)) as total_revenue,
@@ -146,14 +176,12 @@ app.get('/api/entries/history', async (req, res) => {
             [companyId]
         );
         res.json(rows);
-    } catch (error) { 
-        console.error(error);
-        res.status(500).json({ message: error.message }); 
-    }
+    } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.post('/api/entries', async (req, res) => {
-    const data = req.body;
+    // Agora aceita userName e userId enviados pelo front
+    const { userName, userId, ...data } = req.body;
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
@@ -161,15 +189,14 @@ app.post('/api/entries', async (req, res) => {
         const [existing] = await connection.execute('SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', [data.companyId, data.periodStart]);
 
         let entryId;
-        // Garante que undefined vira 0
         const flds = {
-            revenue_resale: data.revenue.resale || 0, revenue_product: data.revenue.product || 0,
-            revenue_service: data.revenue.service || 0, revenue_rent: data.revenue.rent || 0, revenue_other: data.revenue.other || 0,
-            tax_icms: data.taxes.icms || 0, tax_difal: data.taxes.difal || 0, tax_iss: data.taxes.iss || 0,
-            tax_pis: data.taxes.pis || 0, tax_cofins: data.taxes.cofins || 0, tax_csll: data.taxes.csll || 0,
-            tax_irpj: data.taxes.irpj || 0, tax_additional_irpj: data.taxes.additionalIrpj || 0,
-            tax_fust: data.taxes.fust || 0, tax_funtell: data.taxes.funtell || 0,
-            purchases_total: data.purchasesTotal || 0, expenses_total: data.expensesTotal || 0, notes: data.notes
+            revenue_resale: data.revenue.resale||0, revenue_product: data.revenue.product||0,
+            revenue_service: data.revenue.service||0, revenue_rent: data.revenue.rent||0, revenue_other: data.revenue.other||0,
+            tax_icms: data.taxes.icms||0, tax_difal: data.taxes.difal||0, tax_iss: data.taxes.iss||0,
+            tax_pis: data.taxes.pis||0, tax_cofins: data.taxes.cofins||0, tax_csll: data.taxes.csll||0,
+            tax_irpj: data.taxes.irpj||0, tax_additional_irpj: data.taxes.additionalIrpj||0,
+            tax_fust: data.taxes.fust||0, tax_funtell: data.taxes.funtell||0,
+            purchases_total: data.purchasesTotal||0, expenses_total: data.expensesTotal||0, notes: data.notes
         };
 
         if (existing.length > 0) {
@@ -188,22 +215,24 @@ app.post('/api/entries', async (req, res) => {
         
         if (data.details && data.details.length > 0) {
             for (const item of data.details) {
-                if (item.amount > 0) {
-                    await connection.execute(
-                        'INSERT INTO entry_details (entry_id, partner_id, category_id, type, amount) VALUES (?, ?, ?, ?, ?)',
-                        [entryId, item.partner_id || null, item.category_id || null, item.type, item.amount]
-                    );
-                }
+                await connection.execute(
+                    'INSERT INTO entry_details (entry_id, partner_id, category_id, type, amount) VALUES (?, ?, ?, ?, ?)',
+                    [entryId, item.partner_id || null, item.category_id || null, item.type, item.amount]
+                );
             }
         }
 
-        // Atualiza Rankings
         const [topC] = await connection.execute(`SELECT partner_id FROM entry_details WHERE entry_id = ? AND type = 'REVENUE' ORDER BY amount DESC LIMIT 1`, [entryId]);
         const [topS] = await connection.execute(`SELECT partner_id FROM entry_details WHERE entry_id = ? AND type = 'EXPENSE' ORDER BY amount DESC LIMIT 1`, [entryId]);
         await connection.execute(`UPDATE monthly_entries SET top_client_id = ?, top_supplier_id = ? WHERE id = ?`, [topC[0]?.partner_id || null, topS[0]?.partner_id || null, entryId]);
 
         await connection.commit();
+        
+        // --- LOG CORRIGIDO ---
+        await logAction(userId || 0, userName || 'Admin', 'UPSERT_ENTRY', `Lançamento: ${data.periodStart}`);
+        
         res.json({ success: true, id: entryId });
+
     } catch (e) {
         await connection.rollback();
         res.status(500).json({ message: e.message });
@@ -213,57 +242,20 @@ app.post('/api/entries', async (req, res) => {
 app.delete('/api/entries', async (req, res) => {
     try {
         await pool.execute('DELETE FROM monthly_entries WHERE company_id = ? AND period_start = ?', [req.query.companyId, req.query.month]);
+        
+        // --- LOG CORRIGIDO PARA DELETE ---
+        // Pega os dados do usuário da query string (enviados pelo front)
+        const logUser = req.query.userName ? decodeURIComponent(req.query.userName) : 'Admin';
+        const logId = req.query.userId || 0;
+        
+        await logAction(logId, logUser, 'DELETE_ENTRY', `Excluiu lançamento: ${req.query.month}`);
         res.json({ success: true });
     } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ==========================================
-// 4. RELATÓRIOS (DRE, DASHBOARD, ETC)
-// ==========================================
-
-// ROTA DO DRE (Que estava faltando e dando 404)
-app.get('/api/reports/dre', async (req, res) => {
-    const { companyId, year } = req.query;
-    if (!companyId) return res.status(400).json({ message: 'ID necessário' });
-
-    const selectedYear = year || new Date().getFullYear();
-    const startDate = `${selectedYear}-01-01`;
-    const endDate = `${selectedYear}-12-31`;
-
-    try {
-        const [rows] = await pool.execute(
-            `SELECT * FROM monthly_entries 
-             WHERE company_id = ? AND period_start >= ? AND period_start <= ?
-             ORDER BY period_start ASC`,
-            [companyId, startDate, endDate]
-        );
-
-        const dre = Array(12).fill(null).map((_, i) => ({
-            month: i + 1, grossRevenue: 0, deductions: 0, netRevenue: 0,
-            variableCosts: 0, grossProfit: 0, expenses: 0, netResult: 0
-        }));
-
-        rows.forEach(r => {
-            const idx = new Date(r.period_start).getUTCMonth();
-            // Cálculos com proteção contra null (amountOrZero)
-            const rev = amountOrZero(r.revenue_resale) + amountOrZero(r.revenue_product) + amountOrZero(r.revenue_service) + amountOrZero(r.revenue_rent) + amountOrZero(r.revenue_other);
-            const taxes = amountOrZero(r.tax_icms) + amountOrZero(r.tax_pis) + amountOrZero(r.tax_cofins) + amountOrZero(r.tax_iss) + amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll) + amountOrZero(r.tax_difal) + amountOrZero(r.tax_additional_irpj);
-            const costs = amountOrZero(r.purchases_total);
-            const exp = amountOrZero(r.expenses_total);
-
-            dre[idx].grossRevenue += rev;
-            dre[idx].deductions += taxes;
-            dre[idx].netRevenue += (rev - taxes);
-            dre[idx].variableCosts += costs;
-            dre[idx].grossProfit += (rev - taxes - costs);
-            dre[idx].expenses += exp;
-            dre[idx].netResult += (rev - taxes - costs - exp);
-        });
-
-        res.json(dre);
-    } catch (error) { res.status(500).json({ message: 'Erro ao gerar DRE' }); }
-});
-
+// =================================================================================
+// 4. RELATÓRIOS (DASHBOARD, DRE, RANKING)
+// =================================================================================
 app.post('/api/report', async (req, res) => {
     const { companyIds, startDate, endDate } = req.body;
     if(!companyIds || companyIds.length === 0) return res.status(400).json({message: "Filtro inválido"});
@@ -274,7 +266,6 @@ app.post('/api/report', async (req, res) => {
             [companyIds[0], startDate, endDate]
         );
 
-        // Agrupamento por Categoria (Gráfico Rosca)
         const [catData] = await pool.execute(`
             SELECT c.name, SUM(ed.amount) as total 
             FROM entry_details ed
@@ -285,7 +276,6 @@ app.post('/api/report', async (req, res) => {
         `, [companyIds[0], startDate, endDate]);
 
         const summary = { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0, tax_icms: 0, tax_pis: 0, tax_cofins: 0, tax_iss: 0, tax_irpj: 0, tax_csll: 0 };
-        
         const months = rows.map(r => {
             const rev = amountOrZero(r.revenue_resale) + amountOrZero(r.revenue_product) + amountOrZero(r.revenue_service) + amountOrZero(r.revenue_rent) + amountOrZero(r.revenue_other);
             const taxes = amountOrZero(r.tax_icms) + amountOrZero(r.tax_pis) + amountOrZero(r.tax_cofins) + amountOrZero(r.tax_iss) + amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll) + amountOrZero(r.tax_difal) + amountOrZero(r.tax_additional_irpj);
@@ -309,6 +299,38 @@ app.post('/api/report', async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+app.get('/api/reports/dre', async (req, res) => {
+    const { companyId, year } = req.query;
+    if (!companyId) return res.status(400).json({ message: 'ID necessário' });
+
+    const selectedYear = year || new Date().getFullYear();
+    const startDate = `${selectedYear}-01-01`;
+    const endDate = `${selectedYear}-12-31`;
+
+    try {
+        const [rows] = await pool.execute(
+            `SELECT * FROM monthly_entries WHERE company_id = ? AND period_start >= ? AND period_start <= ? ORDER BY period_start ASC`,
+            [companyId, startDate, endDate]
+        );
+
+        const dre = Array(12).fill(null).map((_, i) => ({ month: i + 1, grossRevenue: 0, deductions: 0, netRevenue: 0, variableCosts: 0, grossProfit: 0, expenses: 0, netResult: 0 }));
+
+        rows.forEach(r => {
+            const idx = new Date(r.period_start).getUTCMonth();
+            const rev = amountOrZero(r.revenue_resale) + amountOrZero(r.revenue_product) + amountOrZero(r.revenue_service) + amountOrZero(r.revenue_rent) + amountOrZero(r.revenue_other);
+            const taxes = amountOrZero(r.tax_icms) + amountOrZero(r.tax_pis) + amountOrZero(r.tax_cofins) + amountOrZero(r.tax_iss) + amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll);
+            const costs = amountOrZero(r.purchases_total);
+            const exp = amountOrZero(r.expenses_total);
+
+            dre[idx].grossRevenue += rev; dre[idx].deductions += taxes; dre[idx].netRevenue += (rev - taxes);
+            dre[idx].variableCosts += costs; dre[idx].grossProfit += (rev - taxes - costs);
+            dre[idx].expenses += exp; dre[idx].netResult += (rev - taxes - costs - exp);
+        });
+
+        res.json(dre);
+    } catch (error) { res.status(500).json({ message: 'Erro ao gerar DRE' }); }
+});
+
 app.get('/api/reports/partners-ranking', async (req, res) => {
     const { companyId, startDate, endDate } = req.query;
     try {
@@ -318,9 +340,9 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Erro ranking' }); }
 });
 
-// ==========================================
-// 5. INTELIGÊNCIA & LOGS (RESTITUÍDOS)
-// ==========================================
+// =================================================================================
+// 5. INTELIGÊNCIA, LOGS (FILTRADOS) & AUTH
+// =================================================================================
 app.get('/api/intelligence/projections', async (req, res) => {
     const { companyId } = req.query;
     try {
@@ -332,31 +354,25 @@ app.get('/api/intelligence/projections', async (req, res) => {
              FROM monthly_entries WHERE company_id = ? ORDER BY period_start ASC`, 
             [companyId]
         );
-
-        const dataset = hist.map(h => ({
-            period: h.period_start.substring(0, 7),
-            revenue: Number(h.revenue), expenses: Number(h.expenses), taxes: Number(h.taxes),
-            profit: Number(h.revenue) - Number(h.expenses) - Number(h.taxes),
-            type: 'REAL'
-        }));
-
-        const totalRev = dataset.reduce((a, b) => a + b.revenue, 0);
-        const totalTax = dataset.reduce((a, b) => a + b.taxes, 0);
-        const avgTaxRate = totalRev > 0 ? totalTax / totalRev : 0.06;
-
+        const dataset = hist.map(h => ({ period: h.period_start.substring(0, 7), revenue: Number(h.revenue), expenses: Number(h.expenses), taxes: Number(h.taxes), profit: Number(h.revenue) - Number(h.expenses) - Number(h.taxes), type: 'REAL' }));
+        const totalRev = dataset.reduce((a, b) => a + b.revenue, 0); const totalTax = dataset.reduce((a, b) => a + b.taxes, 0); const avgTaxRate = totalRev > 0 ? totalTax / totalRev : 0.06;
         res.json({ dataset, regime: { name: 'SIMPLES', limit: 4800000 }, averages: { taxRate: avgTaxRate } });
     } catch (error) { res.status(500).json({ message: 'Erro projeções' }); }
 });
 
+// ROTA AUDIT LOGS - FILTRADA PARA O QUE VOCÊ PEDIU
 app.get('/api/audit-logs', async (req, res) => {
     try { 
         const { startDate, endDate } = req.query;
-        let sql = 'SELECT * FROM audit_logs';
+        // Filtro específico: Apenas Criação/Exclusão de Empresa e Movimentações Financeiras
+        let sql = "SELECT * FROM audit_logs WHERE action IN ('CREATE_COMPANY', 'DELETE_COMPANY', 'UPSERT_ENTRY', 'DELETE_ENTRY')";
         let params = [];
         if (startDate && endDate) {
-             sql += ' WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC';
+             sql += ' AND timestamp >= ? AND timestamp <= ?';
              params = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
-        } else { sql += ' ORDER BY timestamp DESC LIMIT 50'; }
+        }
+        sql += ' ORDER BY timestamp DESC LIMIT 50';
+        
         const [rows] = await pool.execute(sql, params); 
         res.json(rows); 
     } catch (e) { res.status(500).json({ error: e.message }); } 
@@ -365,12 +381,51 @@ app.get('/api/audit-logs', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        if (email === 'admin@sce.com' && password === 'admin123') return res.json({ user: { id: 1, full_name: 'Admin SCE', email, role: 'ADMIN' } });
         const [u] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
         if (u.length === 0 || u[0].password_hash !== password) return res.status(401).json({ message: 'Inválido' });
-        await logAction(u[0].id, u[0].full_name, 'LOGIN', 'Login realizado');
+        // Não logamos mais o LOGIN, conforme solicitado
         res.json({ user: { id: u[0].id, full_name: u[0].full_name, email, role: u[0].role, company_id: u[0].company_id } });
     } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// =================================================================================
+// 6. ROTAS DE INTEGRAÇÃO (TESTE E RETORNO)
+// =================================================================================
+app.post('/api/integration/test-questor', async (req, res) => {
+    const { entryId } = req.body; 
+    try {
+        const [entries] = await pool.execute('SELECT * FROM monthly_entries WHERE id = ?', [entryId]);
+        const entry = entries[0];
+        if (!entry) return res.status(404).json({ message: 'Lançamento não encontrado' });
+        const [details] = await pool.execute(`SELECT ed.*, c.questor_account_code FROM entry_details ed LEFT JOIN categories c ON ed.category_id = c.id WHERE ed.entry_id = ?`, [entryId]);
+        const [companies] = await pool.execute('SELECT tax_id FROM companies WHERE id = ?', [entry.company_id]);
+        const txtFile = generateQuestorLayout(entry, details, companies[0].tax_id);
+        const payload = buildPayload(txtFile, companies[0].tax_id, "98.765.432/0001-00", 'TXT');
+        res.json({ message: "Arquivo TXT gerado!", type: "LANCAMENTOS_CONTABEIS", payload, preview_txt: txtFile });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/integration/test-nfse', async (req, res) => {
+    const { entryId } = req.body; 
+    try {
+        const [entries] = await pool.execute('SELECT * FROM monthly_entries WHERE id = ?', [entryId]);
+        const entry = entries[0];
+        if (!entry) return res.status(404).json({ message: 'Lançamento não encontrado' });
+        const [companies] = await pool.execute('SELECT tax_id FROM companies WHERE id = ?', [entry.company_id]);
+        const xmlFile = generateNFSeXML(entry, companies[0].tax_id, "98.765.432/0001-00");
+        const payload = buildPayload(xmlFile, companies[0].tax_id, "98.765.432/0001-00", 'XML');
+        res.json({ message: "Arquivo XML NFSe gerado!", type: "DOC_FISCAL_XML", payload, preview_xml: xmlFile });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/integration/tax-debts', async (req, res) => {
+    const { companyId } = req.query;
+    try {
+        const [companies] = await pool.execute('SELECT tax_id FROM companies WHERE id = ?', [companyId]);
+        if (!companies.length) return res.json([]);
+        const debts = await fetchTaxDebts(companies[0].tax_id, "98.765.432/0001-00", "TOKEN_FICTICIO");
+        res.json(debts || []);
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`SCE Server running on port ${PORT}`));

@@ -1,244 +1,275 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-  Building2, Plus, Search, Trash2, Edit, Save, X 
-} from 'lucide-react';
+import { Building2, Plus, Edit3, Trash2, Search, CheckCircle, X, Loader } from 'lucide-react';
 
 const Companies = ({ apiBase, onSelectCompany }) => {
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES'
-  });
-
-  // Fetch Companies
-  const fetchCompanies = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get(`${apiBase}/api/companies`);
-      setCompanies(response.data);
-    } catch (error) {
-      console.error("Erro ao buscar empresas:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCompanies();
-  }, [apiBase]);
-
-  // Handlers
-  const handleOpenModal = (company = null) => {
-    if (company) {
-      setEditingId(company.id);
-      setFormData({
-        name: company.name,
-        trade_name: company.trade_name,
-        tax_id: company.tax_id,
-        tax_regime: company.tax_regime
-      });
-    } else {
-      setEditingId(null);
-      setFormData({ name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES' });
-    }
-    setIsModalOpen(true);
-  };
-
-  // --- BUSCA DE CNPJ INTELIGENTE (CORRIGIDA) ---
-  const handleSearchCNPJ = async () => {
-    // 1. Remove tudo que não for número (pontos, traços, barras, espaços)
-    const cleanCNPJ = formData.tax_id.replace(/\D/g, '');
-
-    // 2. Validação simples
-    if (cleanCNPJ.length !== 14) {
-        return alert("Por favor, insira um CNPJ válido com 14 dígitos.");
-    }
-
-    try {
-      // 3. Envia o CNPJ limpo para a API
-      const res = await axios.get(`${apiBase}/api/utils/cnpj/${cleanCNPJ}`);
-      
-      setFormData({
-        ...formData,
-        tax_id: cleanCNPJ, // Atualiza o campo com o número limpo (opcional)
-        name: res.data.name,
-        trade_name: res.data.tradeName,
-        tax_regime: res.data.taxRegime
-      });
-    } catch (error) {
-      alert("Erro ao buscar CNPJ. Verifique se o número está correto ou preencha manualmente.");
-      console.error(error);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      // Garante que salve apenas números no banco também
-      const payload = { ...formData, tax_id: formData.tax_id.replace(/\D/g, '') };
-
-      if (editingId) {
-        await axios.put(`${apiBase}/api/companies/${editingId}`, payload);
-      } else {
-        await axios.post(`${apiBase}/api/companies`, payload);
-      }
-      setIsModalOpen(false);
-      fetchCompanies();
-    } catch (error) {
-      alert("Erro ao salvar empresa");
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("Tem certeza que deseja excluir esta empresa?")) return;
-    try {
-      await axios.delete(`${apiBase}/api/companies/${id}`);
-      fetchCompanies();
-    } catch (error) {
-      alert("Erro ao excluir");
-    }
-  };
-
-  const filteredCompanies = companies.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.tax_id.includes(searchTerm)
-  );
-
-  const getRegimeBadge = (regime) => {
-    const safeRegime = regime || 'SIMPLES';
-    const label = safeRegime.replace('_', ' ');
+    const [companies, setCompanies] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
     
-    let color = 'bg-gray-100 text-gray-600';
-    if (safeRegime === 'SIMPLES') color = 'bg-blue-100 text-blue-700';
-    if (safeRegime === 'LUCRO_PRESUMIDO') color = 'bg-purple-100 text-purple-700';
-    if (safeRegime === 'LUCRO_REAL') color = 'bg-orange-100 text-orange-700';
+    // Estado do Modal
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [searchingCnpj, setSearchingCnpj] = useState(false);
+    
+    // Estado do Formulário
+    const [formData, setFormData] = useState({
+        id: null,
+        name: '',
+        trade_name: '',
+        tax_id: '',
+        tax_regime: 'SIMPLES'
+    });
 
-    return <span className={`px-2 py-1 rounded-md text-xs font-bold ${color}`}>{label}</span>;
-  };
+    // Pega o usuário logado para enviar nos logs
+    const user = JSON.parse(localStorage.getItem('hdl_user'));
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Building2 className="text-blue-600" /> Minhas Empresas
-          </h1>
-          <p className="text-gray-500 text-sm">Gerencie os CNPJs do sistema.</p>
-        </div>
-        <button 
-          onClick={() => handleOpenModal()} 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm"
-        >
-          <Plus size={18} /> Nova Empresa
-        </button>
-      </div>
+    const fetchCompanies = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.get(`${apiBase}/api/companies`);
+            setCompanies(res.data);
+        } catch (error) {
+            console.error("Erro ao buscar empresas:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-      {/* Busca */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex items-center gap-3">
-        <Search className="text-gray-400" />
-        <input 
-          type="text" 
-          placeholder="Buscar por Razão Social ou CNPJ..." 
-          className="flex-1 outline-none text-gray-700"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
+    useEffect(() => {
+        fetchCompanies();
+    }, []);
 
-      {/* Grid de Empresas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {loading ? <p className="text-gray-500 col-span-3 text-center">Carregando...</p> : 
-         filteredCompanies.map(company => (
-          <div key={company.id} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition group relative">
-            <div className="flex justify-between items-start mb-2">
-              <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                <Building2 size={24} />
-              </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                 <button onClick={() => handleOpenModal(company)} className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"><Edit size={16}/></button>
-                 <button onClick={() => handleDelete(company.id)} className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-red-600"><Trash2 size={16}/></button>
-              </div>
-            </div>
-            
-            <h3 className="font-bold text-gray-800 text-lg truncate" title={company.name}>{company.trade_name || company.name}</h3>
-            <p className="text-xs text-gray-400 mb-3">{company.name}</p>
-            
-            <div className="flex items-center justify-between mt-4">
-               <span className="text-sm font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-200">{company.tax_id}</span>
-               {getRegimeBadge(company.tax_regime)}
-            </div>
+    const handleCnpjLookup = async () => {
+        const cnpj = formData.tax_id.replace(/\D/g, '');
+        if (cnpj.length !== 14) return alert("Digite um CNPJ válido (14 números) para buscar.");
 
-            <button 
-                onClick={() => onSelectCompany && onSelectCompany(company.id)}
-                className="w-full mt-4 py-2 text-sm font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-            >
-                Selecionar
-            </button>
-          </div>
-        ))}
-      </div>
+        setSearchingCnpj(true);
+        try {
+            const res = await axios.get(`${apiBase}/api/utils/cnpj/${cnpj}`);
+            if (res.data) {
+                setFormData(prev => ({
+                    ...prev,
+                    name: res.data.name,
+                    trade_name: res.data.tradeName || res.data.name,
+                    tax_regime: res.data.taxRegime || 'SIMPLES'
+                }));
+            }
+        } catch (error) {
+            alert("Erro ao buscar CNPJ. Verifique se está correto ou preencha manualmente.");
+        } finally {
+            setSearchingCnpj(false);
+        }
+    };
 
-      {/* Modal de Cadastro */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
-                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h2 className="font-bold text-lg text-gray-800">{editingId ? 'Editar Empresa' : 'Nova Empresa'}</h2>
-                    <button type="button" onClick={() => setIsModalOpen(false)}><X className="text-gray-400 hover:text-red-500"/></button>
+    const handleOpenCreate = () => {
+        setFormData({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES' });
+        setIsEditing(false);
+        setIsModalOpen(true);
+    };
+
+    const handleOpenEdit = (company) => {
+        setFormData({
+            id: company.id,
+            name: company.name || '',
+            trade_name: company.trade_name || '',
+            tax_id: company.tax_id || '',
+            tax_regime: company.tax_regime || 'SIMPLES'
+        });
+        setIsEditing(true);
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        
+        // Payload com dados do usuário para o log ficar correto
+        const payload = {
+            ...formData,
+            userId: user?.id,
+            userName: user?.full_name
+        };
+
+        try {
+            if (isEditing) {
+                await axios.put(`${apiBase}/api/companies/${formData.id}`, payload);
+                alert('Empresa atualizada com sucesso!');
+            } else {
+                await axios.post(`${apiBase}/api/companies`, payload);
+                alert('Empresa cadastrada com sucesso!');
+            }
+            setIsModalOpen(false);
+            fetchCompanies();
+        } catch (error) {
+            console.error("Erro ao salvar:", error);
+            alert('Erro ao salvar empresa.');
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm("ATENÇÃO: Isso apagará TODOS os lançamentos desta empresa. Continuar?")) {
+            try {
+                await axios.delete(`${apiBase}/api/companies/${id}`);
+                fetchCompanies();
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao excluir.");
+            }
+        }
+    };
+
+    const filteredCompanies = companies.filter(c => 
+        (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.trade_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.tax_id || '').includes(searchTerm)
+    );
+
+    return (
+        <div className="p-6 max-w-7xl mx-auto animate-fade-in pb-20">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <Building2 className="text-blue-600" /> Minhas Empresas
+                    </h1>
+                    <p className="text-slate-500 text-sm mt-1">Gerencie as empresas do sistema.</p>
                 </div>
-                
-                <div className="p-6 space-y-4">
-                    <div className="flex gap-2">
-                        <div className="flex-1">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CNPJ</label>
-                            <input 
-                                value={formData.tax_id} 
-                                onChange={(e) => setFormData({...formData, tax_id: e.target.value})} 
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="Pode colar com ponto e barra..."
-                            />
+                <button 
+                    onClick={handleOpenCreate}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition hover:-translate-y-1"
+                >
+                    <Plus size={20} /> Nova Empresa
+                </button>
+            </div>
+
+            {/* Barra de Pesquisa */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6 flex items-center gap-3">
+                <Search className="text-slate-400" size={20} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar empresa..." 
+                    className="w-full outline-none text-slate-700"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
+            </div>
+
+            {/* Lista */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredCompanies.map(company => (
+                    <div key={company.id} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group relative">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-3 bg-blue-50 rounded-xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                <Building2 size={24} />
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => handleOpenEdit(company)} className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition"><Edit3 size={18} /></button>
+                                <button onClick={() => handleDelete(company.id)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition"><Trash2 size={18} /></button>
+                            </div>
                         </div>
-                        <button type="button" onClick={handleSearchCNPJ} className="mt-6 px-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"><Search size={18}/></button>
-                    </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Razão Social</label>
-                        <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/>
-                    </div>
+                        <h3 className="font-bold text-lg text-slate-800 mb-1 truncate">{company.trade_name || company.name}</h3>
+                        <p className="text-xs text-slate-500 mb-4 truncate">{company.name}</p>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome Fantasia</label>
-                        <input value={formData.trade_name} onChange={(e) => setFormData({...formData, trade_name: e.target.value})} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/>
-                    </div>
+                        <div className="space-y-2 mb-6">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">CNPJ</span>
+                                <span className="font-mono font-medium text-slate-700">{company.tax_id || '-'}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Regime</span>
+                                <span className="font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs">{company.tax_regime}</span>
+                            </div>
+                        </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Regime Tributário</label>
-                        <select value={formData.tax_regime} onChange={(e) => setFormData({...formData, tax_regime: e.target.value})} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                            <option value="SIMPLES">Simples Nacional</option>
-                            <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
-                            <option value="LUCRO_REAL">Lucro Real</option>
-                        </select>
+                        <button 
+                            onClick={() => onSelectCompany(company.id)}
+                            className="w-full py-3 rounded-xl border border-blue-600 text-blue-600 font-bold hover:bg-blue-600 hover:text-white transition flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle size={18} /> Acessar Painel
+                        </button>
+                    </div>
+                ))}
+            </div>
+
+            {/* MODAL */}
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-lg text-slate-800">{isEditing ? 'Editar Empresa' : 'Nova Empresa'}</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-rose-500"><X size={20}/></button>
+                        </div>
+                        
+                        <form onSubmit={handleSave} className="p-6 space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CNPJ</label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        placeholder="00.000.000/0000-00"
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-mono"
+                                        value={formData.tax_id || ''} 
+                                        onChange={e => setFormData({...formData, tax_id: e.target.value})}
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={handleCnpjLookup}
+                                        disabled={searchingCnpj}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl shadow transition disabled:opacity-50"
+                                    >
+                                        {searchingCnpj ? <Loader className="animate-spin" size={20}/> : <Search size={20}/>}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Razão Social</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                                    value={formData.name || ''} 
+                                    onChange={e => setFormData({...formData, name: e.target.value})}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nome Fantasia</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                                    value={formData.trade_name || ''} 
+                                    onChange={e => setFormData({...formData, trade_name: e.target.value})}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Regime Tributário</label>
+                                <select 
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                                    value={formData.tax_regime || 'SIMPLES'}
+                                    onChange={e => setFormData({...formData, tax_regime: e.target.value})}
+                                >
+                                    <option value="SIMPLES">Simples Nacional</option>
+                                    <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
+                                    <option value="LUCRO_REAL">Lucro Real</option>
+                                </select>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl mt-4 shadow-lg shadow-blue-500/20 transition"
+                            >
+                                {isEditing ? 'Salvar Alterações' : 'Cadastrar Empresa'}
+                            </button>
+                        </form>
                     </div>
                 </div>
-
-                <div className="px-6 py-4 bg-gray-50 flex justify-end gap-2">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium transition">Cancelar</button>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2">
-                        <Save size={18}/> Salvar
-                    </button>
-                </div>
-            </form>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default Companies;
