@@ -4,13 +4,15 @@ import {
   Wallet, TrendingUp, TrendingDown, Building2, Printer, 
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
   RotateCcw, BarChart3, Layers, AlertTriangle, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, Trophy, Medal, FileCode
+  Users, ShoppingBag, Trophy, Medal, FileCode, Receipt
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, 
   BarElement, Title, Tooltip, Legend, ArcElement, Filler
@@ -84,219 +86,116 @@ const Dashboard = ({ companyId, apiBase }) => {
   const [period, setPeriod] = useState({ start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` });
   const printRef = useRef();
 
+  // --- FUNÇÕES AUXILIARES ---
   const formatCurrency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const getGreeting = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
-  const getLastDayOfMonth = (ym) => { if (!ym) return 30; const [y, m] = ym.split('-'); return new Date(y, +m, 0).getDate(); };
+  
+  // CORREÇÃO: Função getGreeting adicionada de volta
+  const getGreeting = () => { 
+    const h = new Date().getHours(); 
+    if (h < 12) return 'Bom dia';
+    if (h < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const getLastDayOfMonth = (ym) => { 
+    if (!ym) return 30; 
+    const [y, m] = ym.split('-'); 
+    return new Date(y, +m, 0).getDate(); 
+  };
 
   useEffect(() => {
     if (!companyId) return;
     const fetchData = async () => {
       setLoading(true);
       const startDate = `${period.start}-01`;
-      const lastDay = getLastDayOfMonth(period.end);
-      const endDate = `${period.end}-${lastDay}`;
+      const endDate = `${period.end}-${getLastDayOfMonth(period.end)}`;
       try {
         const [resReport, resRanking] = await Promise.all([
             axios.post(`${BASE_URL}/api/report`, { companyIds: [companyId], startDate, endDate }),
             axios.get(`${BASE_URL}/api/reports/partners-ranking`, { params: { companyId, startDate, endDate } })
         ]);
+        
         if (resReport.data) setReportData(resReport.data);
         if (resRanking.data) setRankingData(resRanking.data);
-      } catch (error) { console.error("Erro dashboard:", error); } finally { setLoading(false); }
+        
+      } catch (error) { 
+        console.error("Erro dashboard:", error); 
+      } finally { 
+        setLoading(false); 
+      }
     };
     fetchData();
   }, [companyId, period, BASE_URL]);
 
-  // Exportações
-  const handleExportExcel = () => {
+  // --- EXPORTAÇÕES ---
+
+  const handleExportExcel = async () => {
     if (!reportData || !reportData.months.length) return alert("Sem dados para exportar.");
-    const dataToExport = reportData.months.map(m => ({
-      'Mês': m.monthKey, 'Receita Bruta': m.totalRevenue, 'Impostos': m.totalTaxes, 
-      'Compras': m.totalPurchases, 'Despesas': m.totalExpenses, 'Lucro Líquido': m.profit,
-      'Margem %': m.totalRevenue > 0 ? ((m.profit / m.totalRevenue) * 100).toFixed(2) + '%' : '0%'
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório SCE");
-    XLSX.writeFile(workbook, `SCE_Relatorio_${period.start}.xlsx`);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Relatório Gerencial');
+
+    worksheet.mergeCells('A1:E2');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = 'Vector Financ | Relatório Financeiro';
+    titleCell.font = { name: 'Arial', family: 4, size: 20, bold: true, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.mergeCells('A3:E3');
+    const periodCell = worksheet.getCell('A3');
+    periodCell.value = `Período: ${period.start} a ${period.end}`;
+    periodCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    const headerRow = worksheet.getRow(5);
+    headerRow.values = ['Mês', 'Receita Bruta', 'Impostos', 'Custos/Despesas', 'Lucro Líquido'];
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+        cell.alignment = { horizontal: 'center' };
+    });
+
+    reportData.months.forEach((m) => {
+        const row = worksheet.addRow([m.monthKey, m.totalRevenue, m.totalTaxes, m.totalPurchases + m.totalExpenses, m.profit]);
+        row.getCell(2).numFmt = '"R$" #,##0.00';
+        row.getCell(3).numFmt = '"R$" #,##0.00';
+        row.getCell(4).numFmt = '"R$" #,##0.00';
+        const profitCell = row.getCell(5);
+        profitCell.numFmt = '"R$" #,##0.00';
+        profitCell.font = { bold: true, color: { argb: m.profit >= 0 ? 'FF10B981' : 'FFEF4444' } };
+    });
+
+    worksheet.columns = [{ width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }];
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Relatorio_Vector Financ_${period.start}.xlsx`);
   };
 
+  // --- WHATSAPP CORRIGIDO ---
   const handleShareWhatsApp = () => {
     if (!reportData?.summary) return alert("Aguarde o carregamento.");
     const s = reportData.summary;
     const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    const text = `*📊 SCE Financeiro*\n_Resumo ${period.start} a ${period.end}_\n\n💰 *Fat:* ${formatCurrency(s.totalRevenue)}\n📉 *Saídas:* ${formatCurrency(s.totalCosts + s.totalTaxes)}\n✅ *Lucro:* ${formatCurrency(s.totalProfit)}\n📈 *Margem:* ${margin}%`;
+    
+    // FORMATO EXATO QUE VOCÊ PEDIU
+    const text = 
+`📊 Vector Financeiro
+Resumo ${period.start} a ${period.end}
+
+💰 Fat: ${formatCurrency(s.totalRevenue)}
+📉 Saídas: ${formatCurrency(s.totalCosts + s.totalTaxes)}
+✅ Lucro: ${formatCurrency(s.totalProfit)}
+📈 Margem: ${margin}%`;
+
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleExportHTML = () => {
     if (!reportData) return;
-    
     const s = reportData.summary;
     const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="pt-br">
-      <head>
-        <meta charset="UTF-8">
-        <title>Relatório SCE - ${period.start}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-        <style>
-          :root {
-            --primary: #2563eb;
-            --success: #10b981;
-            --danger: #ef4444;
-            --slate-50: #f8fafc;
-            --slate-100: #f1f5f9;
-            --slate-800: #1e293b;
-          }
-          body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background: var(--slate-50); 
-            color: var(--slate-800); 
-            margin: 0; 
-            padding: 40px; 
-          }
-          .container { max-width: 1000px; margin: 0 auto; }
-          
-          /* Header */
-          .header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 40px; 
-            border-bottom: 2px solid var(--slate-100);
-            padding-bottom: 20px;
-          }
-          .header h1 { margin: 0; font-size: 28px; font-weight: 800; color: var(--primary); }
-          .header p { margin: 5px 0 0 0; color: #64748b; font-size: 14px; }
-
-          /* Cards */
-          .grid-cards { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr 1fr; 
-            gap: 20px; 
-            margin-bottom: 40px; 
-          }
-          .card { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 16px; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-            border: 1px solid var(--slate-100);
-          }
-          .card-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
-          .card-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
-          .val-revenue { color: var(--primary); }
-          .val-profit { color: var(--success); }
-          .val-expense { color: var(--danger); }
-
-          /* Table */
-          table { 
-            width: 100%; 
-            border-collapse: separate; 
-            border-spacing: 0; 
-            background: white; 
-            border-radius: 16px; 
-            overflow: hidden; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-            border: 1px solid var(--slate-100);
-          }
-          th { 
-            background: var(--slate-100); 
-            padding: 16px; 
-            text-align: left; 
-            font-size: 12px; 
-            text-transform: uppercase; 
-            font-weight: 700; 
-            color: #64748b;
-          }
-          td { padding: 16px; border-bottom: 1px solid var(--slate-100); font-size: 14px; }
-          tr:last-child td { border-bottom: none; }
-          tr:hover { background: #fcfcfc; }
-          
-          .text-right { text-align: right; }
-          .font-mono { font-family: monospace; font-weight: 600; }
-          .profit-pos { color: var(--success); font-weight: 700; }
-          .profit-neg { color: var(--danger); font-weight: 700; }
-
-          /* Footer */
-          .footer { margin-top: 40px; text-align: center; color: #94a3b8; font-size: 12px; }
-          
-          @media print {
-            body { padding: 0; background: white; }
-            .card { box-shadow: none; border: 1px solid #eee; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <div>
-              <h1>SCE | Gestão Financeira</h1>
-              <p>Relatório Consolidado de <strong>${period.start}</strong> até <strong>${period.end}</strong></p>
-            </div>
-            <div style="text-align: right">
-              <p>Gerado em: ${new Date().toLocaleDateString('pt-BR')}</p>
-            </div>
-          </div>
-
-          <div class="grid-cards">
-            <div class="card">
-              <div class="card-label">Faturamento Total</div>
-              <div class="card-value val-revenue">${formatCurrency(s.totalRevenue)}</div>
-            </div>
-            <div class="card">
-              <div class="card-label">Lucro Líquido (Margem ${margin}%)</div>
-              <div class="card-value val-profit">${formatCurrency(s.totalProfit)}</div>
-            </div>
-            <div class="card">
-              <div class="card-label">Saídas (Custos + Impostos)</div>
-              <div class="card-value val-expense">${formatCurrency(s.totalCosts + s.totalTaxes)}</div>
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Competência</th>
-                <th class="text-right">Faturamento</th>
-                <th class="text-right">Impostos</th>
-                <th class="text-right">Custos/Despesas</th>
-                <th class="text-right">Resultado Líquido</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.months.map(m => `
-                <tr>
-                  <td><strong>${m.monthKey}</strong></td>
-                  <td class="text-right font-mono">${formatCurrency(m.totalRevenue)}</td>
-                  <td class="text-right font-mono" style="color: #64748b">${formatCurrency(m.totalTaxes)}</td>
-                  <td class="text-right font-mono" style="color: #64748b">${formatCurrency(m.totalPurchases + m.totalExpenses)}</td>
-                  <td class="text-right font-mono ${m.profit >= 0 ? 'profit-pos' : 'profit-neg'}">
-                    ${formatCurrency(m.profit)}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-
-          <div class="footer">
-            <p>SCE - Start's Control Enterprises &copy; 2025 - Sistema de Inteligência Financeira</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
+    const htmlContent = `<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Relatório Vector Financ</title><style>body{font-family:sans-serif;padding:40px;background:#f8fafc}.card{background:white;padding:20px;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;border:1px solid #e2e8f0}.header h1{color:#2563eb;margin:0}table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:right}th{background:#f1f5f9;text-align:left}.pos{color:#10b981;font-weight:bold}.neg{color:#ef4444;font-weight:bold}</style></head><body><div class="header"><h1>Vector Financ | Relatório</h1><p>${period.start} a ${period.end}</p></div><div class="card"><p><strong>Faturamento:</strong> ${formatCurrency(s.totalRevenue)}</p><p><strong>Lucro:</strong> ${formatCurrency(s.totalProfit)} (${margin}%)</p></div><table><thead><tr><th>Mês</th><th>Receita</th><th>Impostos</th><th>Custos</th><th>Lucro</th></tr></thead><tbody>${reportData.months.map(m=>`<tr><td style="text-align:left">${m.monthKey}</td><td>${formatCurrency(m.totalRevenue)}</td><td>${formatCurrency(m.totalTaxes)}</td><td>${formatCurrency(m.totalPurchases+m.totalExpenses)}</td><td class="${m.profit>=0?'pos':'neg'}">${formatCurrency(m.profit)}</td></tr>`).join('')}</tbody></table></body></html>`;
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Relatorio_SCE_${period.start}_a_${period.end}.html`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `Relatorio_${period.start}.html`; link.click();
   };
 
   const handleDownloadPdf = async () => {
@@ -307,7 +206,7 @@ const Dashboard = ({ companyId, apiBase }) => {
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       pdf.addImage(imgData, 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
-      pdf.save(`SCE_Relatorio_${period.start}.pdf`);
+      pdf.save(`Relatorio_Vector Financ_${period.start}.pdf`);
     } catch (err) { alert("Erro PDF."); } finally { setGeneratingPdf(false); }
   };
 
@@ -324,13 +223,35 @@ const Dashboard = ({ companyId, apiBase }) => {
   const maxSupplierVal = rankingData.suppliers.length > 0 ? Math.max(...rankingData.suppliers.map(s => Number(s.value))) : 0;
 
   if (!companyId) return <div className="h-96 flex flex-col items-center justify-center text-slate-400"><Building2 size={48} className="mb-4 opacity-20"/><p>Selecione uma empresa.</p></div>;
-  if (loading || !reportData) return <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (loading || !reportData) return <div className="h-full flex items-center justify-center"><Loader className="animate-spin text-blue-600"/></div>;
 
   const { months, summary, categories } = reportData;
   const regimeRisk = calculateRegimeRisk(reportData);
 
-  // --- DADOS DOS GRÁFICOS ---
+  // --- CONFIGURAÇÕES DOS GRÁFICOS (OPTIONS) ---
+  const commonOptions = { 
+    responsive: true, 
+    maintainAspectRatio: false, 
+    interaction: { mode: 'index', intersect: false }, 
+    scales: { 
+        x: { grid: { display: false } }, 
+        y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] } }, 
+        y1: { position: 'right', grid: { drawOnChartArea: false }, display: true } 
+    },
+    plugins: {
+        legend: { position: 'bottom' }
+    }
+  };
 
+  const stackedOptions = { 
+    ...commonOptions, 
+    scales: { 
+        x: { stacked: true, grid: { display: false } }, 
+        y: { stacked: true, beginAtZero: true } 
+    } 
+  };
+
+  // --- DADOS DOS GRÁFICOS ---
   const mixedChartData = {
     labels: months.map(m => m.monthKey),
     datasets: [
@@ -340,16 +261,12 @@ const Dashboard = ({ companyId, apiBase }) => {
     ]
   };
 
-  // Lógica do Gráfico de Rosca (Categorias)
   const categoryChartData = {
     labels: categories?.map(c => c.name) || [],
     datasets: [{
         data: categories?.map(c => c.total) || [],
-        backgroundColor: [
-            '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6', '#F97316', '#06B6D4'
-        ],
-        borderWidth: 0,
-        hoverOffset: 10
+        backgroundColor: ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'],
+        borderWidth: 0
     }]
   };
 
@@ -372,9 +289,6 @@ const Dashboard = ({ companyId, apiBase }) => {
         { label: 'IRPJ/CSLL', data: months.map(m => m.tax_irpj_csll), backgroundColor: '#EF4444' }
     ]
   };
-
-  const commonOptions = { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] } }, y1: { position: 'right', grid: { drawOnChartArea: false } } } };
-  const stackedOptions = { ...commonOptions, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } };
 
   return (
     <div className="p-2 space-y-8 animate-fade-in max-w-7xl mx-auto pb-20">
@@ -399,69 +313,54 @@ const Dashboard = ({ companyId, apiBase }) => {
 
         {regimeRisk && regimeRisk.exceeds && (<div className="mb-8 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4"><AlertTriangle className="text-amber-600 mt-1"/><div><h3 className="font-bold text-amber-800">Alerta: {regimeRisk.currentRegime}</h3><p className="text-sm text-amber-700">Projeção excede o limite em {regimeRisk.percentage}%.</p></div></div>)}
 
-        {/* --- GRID DE GRÁFICOS (MODIFICADO PARA INCLUIR A ROSCA) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          
-          {/* Gráfico de Evolução (Ocupa 2 colunas) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-2">
-            <div className="flex justify-between mb-4">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 className="text-blue-600" size={20}/> Evolução</h3>
-                <button onClick={() => openTable('EVOLUTION', 'Mensal', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button>
-            </div>
+            <div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 className="text-blue-600" size={20}/> Evolução</h3><button onClick={() => openTable('EVOLUTION', 'Mensal', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div>
             <div className="h-72"><Bar data={mixedChartData} options={commonOptions} /></div>
           </div>
-
-          {/* NOVO: Gráfico de Rosca (Ocupa 1 coluna) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-1">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><PieChart className="text-orange-500" size={20}/> Categorias</h3>
-            <div className="h-72 flex items-center justify-center relative">
-                {categories?.length > 0 ? (
-                    <Doughnut 
-                        data={categoryChartData} 
-                        options={{
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
-                            }
-                        }} 
-                    />
-                ) : (
-                    <p className="text-slate-400 text-sm">Sem dados de categorias.</p>
-                )}
-            </div>
+            <div className="h-72 flex items-center justify-center relative">{categories?.length > 0 ? (<Doughnut data={categoryChartData} options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }} />) : (<p className="text-slate-400 text-sm">Sem dados.</p>)}</div>
           </div>
-
         </div>
 
-        {/* Demais Gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Layers className="text-indigo-600" size={20}/> Estrutura de Custos</h3><button onClick={() => openTable('EVOLUTION', 'Custos', 'EXPENSE')} className="text-xs bg-slate-50 hover:bg-indigo-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="h-64"><Bar data={stackedChartData} options={stackedOptions} /></div></div>
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><PieChart className="text-slate-400" size={20}/> Tributos</h3><button onClick={() => openTable('TAXES', 'Impostos', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="flex-1 flex items-center justify-center h-64"><Bar data={taxesChartData} options={stackedOptions} /></div></div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col">
-                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="text-emerald-600" size={20}/> Top Clientes (Receita)</h3><Trophy size={18} className="text-yellow-500" /></div>
-                <div className="flex-1 overflow-y-auto h-96 pr-2 scrollbar-thin">
-                    {rankingData.clients.length === 0 ? <div className="h-full flex items-center justify-center text-slate-400 text-sm">Sem dados</div> : <div className="flex flex-col gap-1">{rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />)}</div>}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-96">
+                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="text-emerald-600" size={20}/> Top Clientes</h3><Trophy size={18} className="text-yellow-500" /></div>
+                <div className="flex-1 overflow-y-auto pr-2">
+                    {rankingData.clients.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                            <Users size={48} className="mb-2" />
+                            <span className="text-sm font-medium">Sem dados no período</span>
+                        </div>
+                    ) : (
+                        rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />)
+                    )}
                 </div>
             </div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col">
-                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><ShoppingBag className="text-rose-600" size={20}/> Top Fornecedores (Despesa)</h3></div>
-                <div className="flex-1 overflow-y-auto h-96 pr-2 scrollbar-thin">
-                    {rankingData.suppliers.length === 0 ? <div className="h-full flex items-center justify-center text-slate-400 text-sm">Sem dados</div> : <div className="flex flex-col gap-1">{rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />)}</div>}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-96">
+                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><ShoppingBag className="text-rose-600" size={20}/> Top Fornecedores</h3></div>
+                <div className="flex-1 overflow-y-auto pr-2">
+                    {rankingData.suppliers.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                            <ShoppingBag size={48} className="mb-2" />
+                            <span className="text-sm font-medium">Sem dados no período</span>
+                        </div>
+                    ) : (
+                        rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />)
+                    )}
                 </div>
             </div>
         </div>
       </div>
       <div className="flex justify-end"><button onClick={handleDownloadPdf} disabled={generatingPdf} className="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-xl font-bold text-sm transition flex items-center gap-2 shadow-lg disabled:opacity-70">{generatingPdf ? <Loader className="animate-spin" size={16}/> : <><Printer size={16} /> Baixar PDF</>}</button></div>
       
-      <AnimatePresence>{detailModal.open && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4" onClick={() => setDetailModal({ ...detailModal, open: false })}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}><div className="p-4 border-b flex justify-between items-center bg-slate-50"><h2 className="font-bold text-lg flex items-center gap-2"><FileText className="text-blue-600"/> {detailModal.title}</h2><button onClick={() => setDetailModal({ ...detailModal, open: false })}><X className="text-slate-400 hover:text-red-500"/></button></div><div className="p-4 overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Item</th><th className="p-3 text-right">Valor</th></tr></thead><tbody className="divide-y">{detailModal.type === 'TAXES' ? ([{l: 'ICMS', v: detailModal.data.tax_icms}, {l: 'PIS', v: detailModal.data.tax_pis}, {l: 'COFINS', v: detailModal.data.tax_cofins}, {l: 'ISS', v: detailModal.data.tax_iss}, {l: 'IRPJ', v: detailModal.data.tax_irpj}, {l: 'CSLL', v: detailModal.data.tax_csll}].sort((a,b) => b.v - a.v).map((r, i) => <tr key={i}><td className="p-3 font-medium">{r.l}</td><td className="p-3 text-right">{formatCurrency(r.v)}</td></tr>)) : (detailModal.data.map((r, i) => { 
-                let val = 0;
-                if (detailModal.dataType === 'EXPENSE') val = Number(r.totalTaxes) + Number(r.totalPurchases) + Number(r.totalExpenses);
-                else val = Number(r.totalRevenue);
-                return (<tr key={i}><td className="p-3 font-medium">{r.monthKey}</td><td className="p-3 text-right font-bold text-blue-600">{formatCurrency(val)}</td></tr>);
-      }))}</tbody></table></div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>{detailModal.open && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4" onClick={() => setDetailModal({ ...detailModal, open: false })}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}><div className="p-4 border-b flex justify-between items-center bg-slate-50"><h2 className="font-bold text-lg flex items-center gap-2"><FileText className="text-blue-600"/> {detailModal.title}</h2><button onClick={() => setDetailModal({ ...detailModal, open: false })}><X className="text-slate-400 hover:text-red-500"/></button></div><div className="p-4 overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Item</th><th className="p-3 text-right">Valor</th></tr></thead><tbody className="divide-y">{detailModal.type === 'TAXES' ? ([{l: 'ICMS', v: detailModal.data.tax_icms}, {l: 'PIS', v: detailModal.data.tax_pis}, {l: 'COFINS', v: detailModal.data.tax_cofins}, {l: 'ISS', v: detailModal.data.tax_iss}, {l: 'IRPJ', v: detailModal.data.tax_irpj}, {l: 'CSLL', v: detailModal.data.tax_csll}].sort((a,b) => b.v - a.v).map((r, i) => <tr key={i}><td className="p-3 font-medium">{r.l}</td><td className="p-3 text-right">{formatCurrency(r.v)}</td></tr>)) : (detailModal.data.map((r, i) => { let val = 0; if (detailModal.dataType === 'EXPENSE') val = Number(r.totalTaxes) + Number(r.totalPurchases) + Number(r.totalExpenses); else val = Number(r.totalRevenue); return (<tr key={i}><td className="p-3 font-medium">{r.monthKey}</td><td className="p-3 text-right font-bold text-blue-600">{formatCurrency(val)}</td></tr>); }))}</tbody></table></div></motion.div></motion.div>)}</AnimatePresence>
     </div>
   );
 };

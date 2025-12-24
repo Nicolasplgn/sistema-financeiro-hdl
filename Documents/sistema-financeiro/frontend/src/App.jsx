@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // Importei o axios
+import axios from 'axios';
 import { 
   LayoutDashboard, DollarSign, TrendingUp, Building2, 
   ChevronLeft, ChevronRight, LogOut, Users, ShieldAlert,
-  UserCircle, FileText, XCircle, Briefcase // Adicionei o ícone Briefcase
+  UserCircle, FileText, XCircle, Briefcase, Zap
 } from 'lucide-react';
 
-// IMPORTAÇÃO DA LOGO
-import logoSCE from './assets/logo-sce.png';
+// REMOVI A IMPORTAÇÃO DE IMAGEM PARA NÃO DAR ERRO
+// import vectorLogo from './assets/vector-logo.png'; 
 
 // Importação das Páginas
 import Dashboard from './pages/Dashboard';
@@ -35,10 +35,7 @@ const App = () => {
 
   const [user, setUser] = useState(() => getInitialState('hdl_user'));
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => getInitialState('hdl_company_id'));
-  
-  // NOVO ESTADO: Nome da Empresa Selecionada
   const [selectedCompanyName, setSelectedCompanyName] = useState(''); 
-  
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -47,22 +44,15 @@ const App = () => {
     else localStorage.removeItem('hdl_user');
   }, [user]);
 
-  // EFEITO ATUALIZADO: Quando o ID mudar, busca o nome da empresa
   useEffect(() => {
     if (selectedCompanyId) {
       localStorage.setItem('hdl_company_id', JSON.stringify(selectedCompanyId));
-      
-      // Busca o nome da empresa na API para exibir no Header
       axios.get(`${API_BASE}/api/companies`)
         .then(res => {
           const company = res.data.find(c => c.id === selectedCompanyId);
-          if (company) {
-            // Prefere o Nome Fantasia, se não tiver, usa a Razão Social
-            setSelectedCompanyName(company.trade_name || company.name);
-          }
+          if (company) setSelectedCompanyName(company.trade_name || company.name);
         })
-        .catch(err => console.error("Erro ao buscar nome da empresa", err));
-
+        .catch(err => console.error(err));
     } else {
       localStorage.removeItem('hdl_company_id');
       setSelectedCompanyName('');
@@ -78,7 +68,6 @@ const App = () => {
 
   const handleDisconnectCompany = () => {
     setSelectedCompanyId(null);
-    setSelectedCompanyName('');
     localStorage.removeItem('hdl_company_id');
     setActiveTab('companies');
   };
@@ -112,16 +101,22 @@ const App = () => {
       {/* SIDEBAR */}
       <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 h-screen fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-slate-800 shadow-2xl`}>
         
-        {/* HEADER DA SIDEBAR COM LOGO */}
-        <div className="h-24 flex items-center justify-center border-b border-slate-800 relative shrink-0">
-          <div className={`flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}>
-            <img 
-              src={logoSCE} 
-              alt="SCE Logo" 
-              className={`object-contain transition-all duration-300 
-                ${isSidebarCollapsed ? 'w-10 h-10' : 'h-14 w-auto'}`
-              } 
-            />
+        {/* HEADER DA SIDEBAR COM LOGO "V" (FEITA EM CÓDIGO) */}
+        <div className="h-24 flex items-center justify-center border-b border-slate-800 relative shrink-0 bg-black/20">
+          <div className={`flex items-center justify-center transition-all duration-300 gap-3 ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}>
+            
+            {/* LOGO VECTOR FEITA COM CSS (Não precisa de imagem) */}
+            <div className={`flex items-center justify-center bg-blue-600 rounded-lg text-white font-extrabold shadow-lg shadow-blue-900/50 transform -skew-x-12
+                ${isSidebarCollapsed ? 'w-10 h-10 text-2xl' : 'w-10 h-10 text-2xl'}`}>
+                V
+            </div>
+
+            {!isSidebarCollapsed && (
+              <div className="flex flex-col">
+                <span className="text-white font-bold text-lg leading-none tracking-tight">VECTOR</span>
+                <span className="text-blue-500 text-[9px] font-bold uppercase tracking-[0.2em]">Connect</span>
+              </div>
+            )}
           </div>
 
           <button 
@@ -150,7 +145,9 @@ const App = () => {
         <div className="p-4 border-t border-slate-800 bg-slate-900/50 shrink-0">
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center flex-col gap-4' : 'justify-between'}`}>
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 flex items-center justify-center text-slate-300 border border-slate-600 flex-shrink-0"><UserCircle size={24} /></div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-900 to-slate-800 flex items-center justify-center text-white border border-slate-700 flex-shrink-0 font-bold">
+                {user.full_name.charAt(0)}
+              </div>
               {!isSidebarCollapsed && (
                 <div className="flex flex-col overflow-hidden animate-fade-in">
                   <p className="text-sm font-bold text-white truncate max-w-[120px]">{user.full_name.split(' ')[0]}</p>
@@ -189,11 +186,11 @@ const App = () => {
             {selectedCompanyId ? (
               <div className="flex flex-col items-end">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Ambiente Conectado</span>
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg shadow-sm transition-all hover:shadow-md hover:border-emerald-300 group">
-                  <div className="p-1 bg-emerald-100 rounded text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm transition-all hover:shadow-md hover:border-blue-300 group">
+                  <div className="p-1 bg-blue-100 rounded text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <Briefcase size={16} />
                   </div>
-                  <span className="text-sm font-bold text-emerald-800 pr-2 border-r border-emerald-200">
+                  <span className="text-sm font-bold text-blue-800 pr-2 border-r border-blue-200">
                     {selectedCompanyName || 'Carregando...'}
                   </span>
                   <button 
