@@ -4,7 +4,7 @@ import {
   Wallet, TrendingUp, TrendingDown, Building2, Printer, 
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
   RotateCcw, BarChart3, Layers, AlertTriangle, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, Trophy, Medal, FileCode, Receipt
+  Users, ShoppingBag, Trophy, Medal, FileCode, Receipt, Activity, Target
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,14 +36,14 @@ const RankingItem = ({ rank, name, value, maxValue, type }) => {
 
   return (
     <div className="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors rounded-lg px-2">
-      <div className={`w-10 h-10 rounded-full ${rankColor} flex items-center justify-center text-xs font-bold shrink-0 shadow-sm`}>
+      <div className={`w-10 h-10 rounded-full ${rankColor} flex items-center justify-center text-xs font-black shrink-0 shadow-sm`}>
         {RankIcon ? RankIcon : `#${rank}`}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-end mb-1.5">
-          <span className="text-sm font-bold text-slate-700 truncate max-w-[150px]" title={name}>{name}</span>
+          <span className="text-sm font-black text-slate-700 truncate max-w-[150px] uppercase tracking-tighter" title={name}>{name}</span>
           <div className="text-right">
-            <span className={`block text-sm font-mono font-bold ${colorText}`}>
+            <span className={`block text-sm font-mono font-black tracking-tighter ${colorText}`}>
               {Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </span>
           </div>
@@ -61,18 +61,21 @@ const RankingItem = ({ rank, name, value, maxValue, type }) => {
   );
 };
 
-const PremiumCard = ({ title, value, sub, icon: Icon, color }) => (
-  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-    <div className="flex justify-between items-start mb-4 relative z-10">
-      <div className={`p-3 rounded-xl bg-opacity-10 ${color.replace('text-', 'bg-')} ${color}`}>
-        <Icon size={24} />
-      </div>
+const PremiumCard = ({ title, value, sub, icon: Icon, color, children }) => (
+  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group flex flex-col justify-between h-full">
+    <div>
+        <div className="flex justify-between items-start mb-4 relative z-10">
+            <div className={`p-4 rounded-2xl bg-opacity-10 ${color.replace('text-', 'bg-')} ${color}`}>
+                <Icon size={24} />
+            </div>
+        </div>
+        <div className="relative z-10">
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{title}</p>
+            <h3 className={`text-4xl font-black tracking-tighter italic ${color}`}>{value}</h3>
+            <p className="text-xs text-slate-400 mt-2 font-medium">{sub}</p>
+        </div>
     </div>
-    <div className="relative z-10">
-      <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">{title}</p>
-      <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
-      <p className="text-xs text-slate-400 mt-2 font-medium">{sub}</p>
-    </div>
+    {children && <div className="mt-4">{children}</div>}
   </motion.div>
 );
 
@@ -84,12 +87,11 @@ const Dashboard = ({ companyId, apiBase }) => {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [detailModal, setDetailModal] = useState({ open: false, type: null, data: null, title: '', dataType: 'REVENUE' });
   const [period, setPeriod] = useState({ start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` });
+  
   const printRef = useRef();
 
-  // --- FUNÇÕES AUXILIARES ---
   const formatCurrency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   
-  // CORREÇÃO: Função getGreeting adicionada de volta
   const getGreeting = () => { 
     const h = new Date().getHours(); 
     if (h < 12) return 'Bom dia';
@@ -114,253 +116,248 @@ const Dashboard = ({ companyId, apiBase }) => {
             axios.post(`${BASE_URL}/api/report`, { companyIds: [companyId], startDate, endDate }),
             axios.get(`${BASE_URL}/api/reports/partners-ranking`, { params: { companyId, startDate, endDate } })
         ]);
-        
         if (resReport.data) setReportData(resReport.data);
         if (resRanking.data) setRankingData(resRanking.data);
-        
-      } catch (error) { 
-        console.error("Erro dashboard:", error); 
-      } finally { 
-        setLoading(false); 
-      }
+      } catch (error) { console.error("Erro dashboard:", error); } finally { setLoading(false); }
     };
     fetchData();
   }, [companyId, period, BASE_URL]);
 
-  // --- EXPORTAÇÕES ---
+  // --- FUNÇÕES DE EXPORTAÇÃO CORRIGIDAS ---
 
   const handleExportExcel = async () => {
     if (!reportData || !reportData.months.length) return alert("Sem dados para exportar.");
+    
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Relatório Gerencial');
+    const worksheet = workbook.addWorksheet('Relatório BI Vector');
 
     worksheet.mergeCells('A1:E2');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'Vector Financ | Relatório Financeiro';
-    titleCell.font = { name: 'Arial', family: 4, size: 20, bold: true, color: { argb: 'FFFFFFFF' } };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    titleCell.value = 'VECTOR CONNECT ENTERPRISES | MASTER BI REPORT';
+    titleCell.font = { name: 'Arial Black', size: 16, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    worksheet.mergeCells('A3:E3');
-    const periodCell = worksheet.getCell('A3');
-    periodCell.value = `Período: ${period.start} a ${period.end}`;
-    periodCell.alignment = { vertical: 'middle', horizontal: 'center' };
-
-    const headerRow = worksheet.getRow(5);
-    headerRow.values = ['Mês', 'Receita Bruta', 'Impostos', 'Custos/Despesas', 'Lucro Líquido'];
+    const headerRow = worksheet.getRow(4);
+    headerRow.values = ['COMPETÊNCIA', 'FATURAMENTO', 'IMPOSTOS', 'SAÍDAS (CUSTOS)', 'LUCRO LÍQUIDO'];
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
-        cell.alignment = { horizontal: 'center' };
-    });
+    headerRow.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }; });
 
     reportData.months.forEach((m) => {
-        const row = worksheet.addRow([m.monthKey, m.totalRevenue, m.totalTaxes, m.totalPurchases + m.totalExpenses, m.profit]);
-        row.getCell(2).numFmt = '"R$" #,##0.00';
-        row.getCell(3).numFmt = '"R$" #,##0.00';
-        row.getCell(4).numFmt = '"R$" #,##0.00';
-        const profitCell = row.getCell(5);
-        profitCell.numFmt = '"R$" #,##0.00';
-        profitCell.font = { bold: true, color: { argb: m.profit >= 0 ? 'FF10B981' : 'FFEF4444' } };
+        const row = worksheet.addRow([
+            m.monthKey, 
+            Number(m.totalRevenue), 
+            Number(m.totalTaxes), 
+            (Number(m.totalPurchases) + Number(m.totalExpenses)), 
+            Number(m.profit)
+        ]);
+        [2, 3, 4, 5].forEach(col => { row.getCell(col).numFmt = '"R$" #,##0.00'; });
     });
 
-    worksheet.columns = [{ width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }];
+    worksheet.columns = [{ width: 20 }, { width: 25 }, { width: 25 }, { width: 25 }, { width: 25 }];
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Relatorio_Vector Financ_${period.start}.xlsx`);
-  };
-
-  // --- WHATSAPP CORRIGIDO ---
-  const handleShareWhatsApp = () => {
-    if (!reportData?.summary) return alert("Aguarde o carregamento.");
-    const s = reportData.summary;
-    const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    
-    // FORMATO EXATO QUE VOCÊ PEDIU
-    const text = 
-`📊 Vector Financeiro
-Resumo ${period.start} a ${period.end}
-
-💰 Fat: ${formatCurrency(s.totalRevenue)}
-📉 Saídas: ${formatCurrency(s.totalCosts + s.totalTaxes)}
-✅ Lucro: ${formatCurrency(s.totalProfit)}
-📈 Margem: ${margin}%`;
-
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    saveAs(new Blob([buffer]), `Relatorio_BI_Vector_${period.start}.xlsx`);
   };
 
   const handleExportHTML = () => {
-    if (!reportData) return;
+    if (!reportData) return alert("Sem dados.");
     const s = reportData.summary;
     const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    const htmlContent = `<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Relatório Vector Financ</title><style>body{font-family:sans-serif;padding:40px;background:#f8fafc}.card{background:white;padding:20px;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;border:1px solid #e2e8f0}.header h1{color:#2563eb;margin:0}table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:right}th{background:#f1f5f9;text-align:left}.pos{color:#10b981;font-weight:bold}.neg{color:#ef4444;font-weight:bold}</style></head><body><div class="header"><h1>Vector Financ | Relatório</h1><p>${period.start} a ${period.end}</p></div><div class="card"><p><strong>Faturamento:</strong> ${formatCurrency(s.totalRevenue)}</p><p><strong>Lucro:</strong> ${formatCurrency(s.totalProfit)} (${margin}%)</p></div><table><thead><tr><th>Mês</th><th>Receita</th><th>Impostos</th><th>Custos</th><th>Lucro</th></tr></thead><tbody>${reportData.months.map(m=>`<tr><td style="text-align:left">${m.monthKey}</td><td>${formatCurrency(m.totalRevenue)}</td><td>${formatCurrency(m.totalTaxes)}</td><td>${formatCurrency(m.totalPurchases+m.totalExpenses)}</td><td class="${m.profit>=0?'pos':'neg'}">${formatCurrency(m.profit)}</td></tr>`).join('')}</tbody></table></body></html>`;
+    
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-br">
+    <head>
+        <meta charset="UTF-8">
+        <title>Vector Connect BI Report</title>
+        <style>
+            body { font-family: sans-serif; padding: 40px; background: #f8fafc; }
+            .card { background: white; padding: 30px; border-radius: 25px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+            h1 { color: #0f172a; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #0f172a; color: white; padding: 12px; text-align: left; }
+            td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>Vector Connect | BI Report</h1>
+            <p>Período: ${period.start} a ${period.end}</p>
+            <p>Faturamento Total: ${formatCurrency(s.totalRevenue)}</p>
+            <p>Lucro Total: ${formatCurrency(s.totalProfit)} (Margem: ${margin}%)</p>
+            <table>
+                <thead><tr><th style="text-align:left">Mês</th><th>Receita</th><th>Saídas</th><th>Resultado</th></tr></thead>
+                <tbody>
+                    ${reportData.months.map(m => `
+                        <tr><td style="text-align:left">${m.monthKey}</td><td>${formatCurrency(m.totalRevenue)}</td><td>${formatCurrency(m.totalTaxes + m.totalPurchases + m.totalExpenses)}</td><td>${formatCurrency(m.profit)}</td></tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    </body>
+    </html>`;
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = `Relatorio_${period.start}.html`; link.click();
+    const link = document.createElement('a');
+    link.href = url; link.download = `Relatorio_BI_Vector.html`; link.click();
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!reportData?.summary) return;
+    const s = reportData.summary;
+    const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
+    const text = `📊 *Vector Connect Financeiro*\n💰 Fat: ${formatCurrency(s.totalRevenue)}\n📉 Saídas: ${formatCurrency(s.totalCosts + s.totalTaxes)}\n✅ Lucro: ${formatCurrency(s.totalProfit)}\n📈 Margem: ${margin}%`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleDownloadPdf = async () => {
-    if (!printRef.current) return;
     setGeneratingPdf(true);
     try {
-      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      pdf.addImage(imgData, 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
-      pdf.save(`Relatorio_Vector Financ_${period.start}.pdf`);
-    } catch (err) { alert("Erro PDF."); } finally { setGeneratingPdf(false); }
+        const canvas = await html2canvas(printRef.current, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        pdf.addImage(imgData, 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
+        pdf.save(`Relatorio_BI_Executivo.pdf`);
+    } finally { setGeneratingPdf(false); }
   };
 
-  const openTable = (type, title, dataType = 'REVENUE') => { if (reportData) setDetailModal({ open: true, type, title, data: type === 'TAXES' ? reportData.summary : reportData.months, dataType }); };
-
-  const calculateRegimeRisk = (data) => {
-    if (!data?.months?.length) return null;
-    const projected = data.summary.totalRevenue || 0;
-    if (projected > 4800000) return { exceeds: true, percentage: 10, currentRegime: 'SIMPLES' };
-    return null;
+  // --- FUNÇÃO VER DADOS (FIXED) ---
+  const openTable = (type, title, dataType = 'REVENUE') => {
+    if (!reportData) return;
+    setDetailModal({
+        open: true,
+        type: type,
+        title: title,
+        data: type === 'TAXES' ? reportData.summary : type === 'CATEGORIES' ? reportData.categories : reportData.months,
+        dataType: dataType
+    });
   };
 
-  const maxClientVal = rankingData.clients.length > 0 ? Math.max(...rankingData.clients.map(c => Number(c.value))) : 0;
-  const maxSupplierVal = rankingData.suppliers.length > 0 ? Math.max(...rankingData.suppliers.map(s => Number(s.value))) : 0;
-
-  if (!companyId) return <div className="h-96 flex flex-col items-center justify-center text-slate-400"><Building2 size={48} className="mb-4 opacity-20"/><p>Selecione uma empresa.</p></div>;
-  if (loading || !reportData) return <div className="h-full flex items-center justify-center"><Loader className="animate-spin text-blue-600"/></div>;
+  if (!companyId) return <div className="h-96 flex flex-col items-center justify-center text-slate-400 font-black uppercase tracking-widest italic opacity-40">Selecione uma Unidade de Negócio</div>;
+  if (loading || !reportData) return <div className="h-full flex items-center justify-center"><Loader className="animate-spin text-blue-600" size={48}/></div>;
 
   const { months, summary, categories } = reportData;
-  const regimeRisk = calculateRegimeRisk(reportData);
+  const totalCategories = categories?.reduce((acc, curr) => acc + Number(curr.total), 0) || 0;
+  const marginValue = summary.totalRevenue > 0 ? ((summary.totalProfit / summary.totalRevenue) * 100) : 0;
 
-  // --- CONFIGURAÇÕES DOS GRÁFICOS (OPTIONS) ---
-  const commonOptions = { 
-    responsive: true, 
-    maintainAspectRatio: false, 
+  // --- OPÇÕES DE GRÁFICOS ---
+  const fullInteractionOptions = { 
+    responsive: true, maintainAspectRatio: false, 
     interaction: { mode: 'index', intersect: false }, 
     scales: { 
-        x: { grid: { display: false } }, 
-        y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] } }, 
-        y1: { position: 'right', grid: { drawOnChartArea: false }, display: true } 
+        x: { grid: { display: false }, ticks: { font: { weight: 'bold' } } }, 
+        y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] }, ticks: { font: { family: 'monospace' } } }, 
+        y1: { position: 'right', grid: { drawOnChartArea: false }, display: true, ticks: { callback: (v) => `${v}%`, font: { weight: 'bold' } } } 
     },
     plugins: {
-        legend: { position: 'bottom' }
+        legend: { position: 'bottom', labels: { font: { weight: 'bold' }, usePointStyle: true } },
+        tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.95)', titleFont: { size: 14, weight: 'bold' }, padding: 12, cornerRadius: 12 }
     }
   };
 
-  const stackedOptions = { 
-    ...commonOptions, 
-    scales: { 
-        x: { stacked: true, grid: { display: false } }, 
-        y: { stacked: true, beginAtZero: true } 
-    } 
-  };
-
-  // --- DADOS DOS GRÁFICOS ---
   const mixedChartData = {
     labels: months.map(m => m.monthKey),
     datasets: [
       { type: 'line', label: 'Margem (%)', data: months.map(m => m.totalRevenue > 0 ? ((m.profit / m.totalRevenue) * 100).toFixed(1) : 0), borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', borderWidth: 2, borderDash: [5, 5], tension: 0.4, pointRadius: 0, yAxisID: 'y1', order: 0 },
-      { type: 'line', label: 'Faturamento', data: months.map(m => m.totalRevenue), borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 3, tension: 0.4, fill: true, pointRadius: 4, yAxisID: 'y', order: 1 },
-      { type: 'bar', label: 'Lucro Líquido', data: months.map(m => m.profit), backgroundColor: months.map(m => m.profit >= 0 ? '#10B981' : '#EF4444'), borderRadius: 4, barPercentage: 0.5, yAxisID: 'y', order: 2 }
-    ]
-  };
-
-  const categoryChartData = {
-    labels: categories?.map(c => c.name) || [],
-    datasets: [{
-        data: categories?.map(c => c.total) || [],
-        backgroundColor: ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'],
-        borderWidth: 0
-    }]
-  };
-
-  const stackedChartData = {
-    labels: months.map(m => m.monthKey),
-    datasets: [
-      { label: 'Impostos', data: months.map(m => m.totalTaxes), backgroundColor: '#F59E0B', borderRadius: 2 },
-      { label: 'Compras', data: months.map(m => m.totalPurchases), backgroundColor: '#6366F1', borderRadius: 2 },
-      { label: 'Despesas', data: months.map(m => m.totalExpenses), backgroundColor: '#EC4899', borderRadius: 2 },
-    ]
-  };
-
-  const taxesChartData = {
-    labels: months.map(m => m.monthKey),
-    datasets: [
-        { label: 'ICMS', data: months.map(m => m.tax_icms), backgroundColor: '#3B82F6' },
-        { label: 'PIS', data: months.map(m => m.tax_pis), backgroundColor: '#F59E0B' },
-        { label: 'COFINS', data: months.map(m => m.tax_cofins), backgroundColor: '#10B981' },
-        { label: 'ISS', data: months.map(m => m.tax_iss), backgroundColor: '#8B5CF6' },
-        { label: 'IRPJ/CSLL', data: months.map(m => m.tax_irpj_csll), backgroundColor: '#EF4444' }
+      { type: 'line', label: 'Faturamento', data: months.map(m => m.totalRevenue), borderColor: '#2563EB', borderWidth: 4, tension: 0.4, fill: false, pointRadius: 4, yAxisID: 'y', order: 1 },
+      { type: 'bar', label: 'Lucro Líquido', data: months.map(m => m.profit), backgroundColor: months.map(m => m.profit >= 0 ? '#10B981' : '#EF4444'), borderRadius: 8, yAxisID: 'y', order: 2 }
     ]
   };
 
   return (
-    <div className="p-2 space-y-8 animate-fade-in max-w-7xl mx-auto pb-20">
-      <div ref={printRef} className="bg-slate-50 p-6 rounded-xl">
-        <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-slate-200 pb-6 mb-6">
-          <div><h1 className="text-3xl font-bold text-slate-800 tracking-tight">{getGreeting()}, Gestor.</h1><p className="text-slate-500 mt-1">Resumo de <span className="font-bold text-blue-600">{period.start} a {period.end}</span></p></div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={handleShareWhatsApp} className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-sm flex items-center gap-2 text-xs font-bold transition-all"><MessageCircle size={16}/> WhatsApp</button>
-            <button onClick={handleExportExcel} className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm flex items-center gap-2 text-xs font-bold transition-all"><FileSpreadsheet size={16}/> Excel</button>
-            <button onClick={handleExportHTML} className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-xl shadow-sm flex items-center gap-2 text-xs font-bold transition-all"><FileCode size={16}/> Web</button>
-            <div className="h-8 w-px bg-slate-300 mx-2 hidden md:block"></div>
-            <button onClick={() => setPeriod({ start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` })} className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 transition shadow-sm"><RotateCcw size={18}/></button>
-            <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm"><Filter size={16} className="text-slate-400 ml-2"/><input type="month" value={period.start} onChange={(e) => setPeriod({...period, start: e.target.value})} className="border-none bg-transparent text-slate-600 font-medium text-sm w-32 outline-none"/><span className="text-slate-300">até</span><input type="month" value={period.end} onChange={(e) => setPeriod({...period, end: e.target.value})} className="border-none bg-transparent text-slate-600 font-medium text-sm w-32 outline-none"/></div>
+    <div className="p-4 space-y-10 w-full max-w-[1600px] mx-auto pb-20 animate-fade-in">
+      <div ref={printRef} className="bg-slate-50 p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
+        
+        {/* CABEÇALHO EXECUTIVO */}
+        <div className="flex flex-col xl:flex-row justify-between items-center gap-10 border-b border-slate-200 pb-12 mb-12">
+          <div className="flex-1 text-center xl:text-left">
+            <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic leading-tight">{getGreeting()}, Diretor.</h1>
+            <p className="text-slate-400 mt-4 font-black text-[11px] uppercase tracking-[0.4em] flex justify-center xl:justify-start items-center gap-3 italic">
+               <Activity size={16} className="text-blue-600"/> RESUMO CORPORATIVO DE BI
+            </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <PremiumCard title="Faturamento" value={formatCurrency(summary.totalRevenue)} sub="Entradas Brutas" icon={Wallet} color="text-blue-600"/>
-          <PremiumCard title="Lucro Líquido" value={formatCurrency(summary.totalProfit)} sub={`Margem Real: ${summary.totalRevenue > 0 ? ((summary.totalProfit/summary.totalRevenue)*100).toFixed(1) : 0}%`} icon={TrendingUp} color={summary.totalProfit >= 0 ? "text-emerald-600" : "text-rose-600"}/>
-          <PremiumCard title="Despesas Totais" value={formatCurrency(summary.totalTaxes + summary.totalCosts)} sub="Impostos + Custos" icon={TrendingDown} color="text-rose-600"/>
-        </div>
-
-        {regimeRisk && regimeRisk.exceeds && (<div className="mb-8 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4"><AlertTriangle className="text-amber-600 mt-1"/><div><h3 className="font-bold text-amber-800">Alerta: {regimeRisk.currentRegime}</h3><p className="text-sm text-amber-700">Projeção excede o limite em {regimeRisk.percentage}%.</p></div></div>)}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-2">
-            <div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 className="text-blue-600" size={20}/> Evolução</h3><button onClick={() => openTable('EVOLUTION', 'Mensal', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div>
-            <div className="h-72"><Bar data={mixedChartData} options={commonOptions} /></div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm col-span-1">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><PieChart className="text-orange-500" size={20}/> Categorias</h3>
-            <div className="h-72 flex items-center justify-center relative">{categories?.length > 0 ? (<Doughnut data={categoryChartData} options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }} />) : (<p className="text-slate-400 text-sm">Sem dados.</p>)}</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Layers className="text-indigo-600" size={20}/> Estrutura de Custos</h3><button onClick={() => openTable('EVOLUTION', 'Custos', 'EXPENSE')} className="text-xs bg-slate-50 hover:bg-indigo-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="h-64"><Bar data={stackedChartData} options={stackedOptions} /></div></div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col"><div className="flex justify-between mb-4"><h3 className="font-bold text-slate-800 flex items-center gap-2"><PieChart className="text-slate-400" size={20}/> Tributos</h3><button onClick={() => openTable('TAXES', 'Impostos', 'REVENUE')} className="text-xs bg-slate-50 hover:bg-blue-50 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold flex gap-1 items-center"><TableIcon size={14}/> Dados</button></div><div className="flex-1 flex items-center justify-center h-64"><Bar data={taxesChartData} options={stackedOptions} /></div></div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-96">
-                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="text-emerald-600" size={20}/> Top Clientes</h3><Trophy size={18} className="text-yellow-500" /></div>
-                <div className="flex-1 overflow-y-auto pr-2">
-                    {rankingData.clients.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                            <Users size={48} className="mb-2" />
-                            <span className="text-sm font-medium">Sem dados no período</span>
-                        </div>
-                    ) : (
-                        rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />)
-                    )}
-                </div>
+          <div className="flex flex-col md:flex-row items-center gap-6">
+            <div className="flex items-center gap-3">
+                <button onClick={handleShareWhatsApp} className="px-8 py-5 bg-green-600 hover:bg-green-700 text-white rounded-2xl shadow-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all hover:-translate-y-1"><MessageCircle size={18}/> WHATSAPP</button>
+                <button onClick={handleExportExcel} className="px-8 py-5 bg-slate-900 hover:bg-black text-white rounded-2xl shadow-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all hover:-translate-y-1"><FileSpreadsheet size={18}/> EXCEL</button>
+                <button onClick={handleExportHTML} className="px-8 py-5 bg-white border border-slate-200 text-slate-700 rounded-2xl shadow-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 hover:-translate-y-1"><FileCode size={18}/> WEB</button>
+                <div className="h-10 w-px bg-slate-300 mx-1"></div>
+                <button onClick={() => setPeriod({ start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` })} className="p-5 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-blue-600 shadow-sm transition-all hover:rotate-180"><RotateCcw size={22}/></button>
             </div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-96">
-                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 flex items-center gap-2"><ShoppingBag className="text-rose-600" size={20}/> Top Fornecedores</h3></div>
-                <div className="flex-1 overflow-y-auto pr-2">
-                    {rankingData.suppliers.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                            <ShoppingBag size={48} className="mb-2" />
-                            <span className="text-sm font-medium">Sem dados no período</span>
-                        </div>
-                    ) : (
-                        rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />)
-                    )}
-                </div>
+            
+            <div className="flex items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-inner">
+                <Filter size={20} className="text-slate-400 ml-3"/>
+                <input type="month" value={period.start} onChange={(e) => setPeriod({...period, start: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-sm outline-none uppercase min-w-[180px] cursor-pointer"/>
+                <span className="text-slate-300 font-black">➜</span>
+                <input type="month" value={period.end} onChange={(e) => setPeriod({...period, end: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-sm outline-none uppercase min-w-[180px] cursor-pointer"/>
             </div>
+          </div>
+        </div>
+
+        {/* KPIS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+          <PremiumCard title="Faturamento Bruto" value={formatCurrency(summary.totalRevenue)} sub="Receita Acumulada" icon={Wallet} color="text-blue-600"/>
+          <PremiumCard title="Margem Líquida" value={`${marginValue.toFixed(1)}%`} sub={`Status: ${marginValue > 20 ? 'Excelente' : 'Estável'}`} icon={Target} color="text-indigo-600">
+             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(marginValue, 100)}%` }} className="h-full bg-indigo-600" /></div>
+          </PremiumCard>
+          <PremiumCard title="Lucro Líquido" value={formatCurrency(summary.totalProfit)} sub="Resultado Final" icon={TrendingUp} color={summary.totalProfit >= 0 ? "text-emerald-600" : "text-rose-600"}/>
+          <PremiumCard title="Fluxo de Saída" value={formatCurrency(summary.totalTaxes + summary.totalCosts)} sub="Custos e Impostos" icon={TrendingDown} color="text-rose-600"/>
+        </div>
+
+        {/* GRÁFICOS */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-10">
+          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm col-span-2">
+            <div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><BarChart3 className="text-blue-600" size={20}/> Evolução de Performance</h3><button onClick={() => openTable('EVOLUTION', 'Histórico Mensal de Receita', 'REVENUE')} className="px-5 py-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 font-black text-[10px] uppercase tracking-widest flex gap-2 items-center transition-all shadow-sm"><TableIcon size={18}/> Ver Dados</button></div>
+            <div className="h-96"><Bar data={mixedChartData} options={fullInteractionOptions} /></div>
+          </div>
+          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm relative text-center">
+            <div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><PieChart className="text-blue-600" size={20}/> Categorias</h3><button onClick={() => openTable('CATEGORIES', 'Detalhamento por Categoria')} className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 transition-all"><TableIcon size={20}/></button></div>
+            <div className="h-96 flex flex-col items-center justify-center relative">
+                {categories?.length > 0 ? (
+                    <><Doughnut data={{ labels: categories?.map(c => c.name) || [], datasets: [{ data: categories?.map(c => c.total) || [], backgroundColor: ['#0F172A', '#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'], borderWidth: 0 }] }} options={{ maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: true, position: 'bottom', labels: { font: { weight: 'bold', size: 10 }, usePointStyle: true, padding: 20 } }, tooltip: { enabled: false } } }} /><div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-24"><span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1 italic"> Despesa Total </span><span className="text-3xl font-black text-slate-900 tracking-tighter italic"> {formatCurrency(totalCategories)} </span></div></>
+                ) : (<p className="text-slate-300 font-black text-[11px] uppercase italic">Aguardando Lançamentos...</p>)}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><Layers className="text-blue-600" size={20}/> Estrutura de Gastos</h3><button onClick={() => openTable('EVOLUTION', 'Custos Analíticos', 'EXPENSE')} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 transition-all"><TableIcon size={18}/></button></div><div className="h-80"><Bar data={{ labels: months.map(m => m.monthKey), datasets: [{ label: 'Impostos', data: months.map(m => m.totalTaxes), backgroundColor: '#F59E0B', borderRadius: 4 }, { label: 'Compras', data: months.map(m => m.totalPurchases), backgroundColor: '#6366F1', borderRadius: 4 }, { label: 'Despesas', data: months.map(m => m.totalExpenses), backgroundColor: '#EC4899', borderRadius: 4 }] }} options={fullInteractionOptions} /></div></div>
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><Receipt className="text-slate-900" size={20}/> Matriz Tributária</h3><button onClick={() => openTable('TAXES', 'Detalhamento de Impostos')} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 transition-all"><TableIcon size={18}/></button></div><div className="h-80"><Bar data={{ labels: months.map(m => m.monthKey), datasets: [{ label: 'ICMS', data: months.map(m => m.tax_icms), backgroundColor: '#2563EB' }, { label: 'PIS', data: months.map(m => m.tax_pis), backgroundColor: '#F59E0B' }, { label: 'COFINS', data: months.map(m => m.tax_cofins), backgroundColor: '#10B981' }, { label: 'ISS', data: months.map(m => m.tax_iss), backgroundColor: '#8B5CF6' }, { label: 'IRPJ/CSLL', data: months.map(m => m.tax_irpj_csll), backgroundColor: '#EF4444' }] }} options={fullInteractionOptions} /></div></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col h-[550px]"><div className="flex justify-between items-center mb-10 text-[11px] font-black uppercase tracking-[0.3em] text-slate-900 italic"><span className="flex items-center gap-3"><Users className="text-blue-600" size={22}/> Top Parceiros</span><Trophy className="text-yellow-500" size={22}/></div><div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{rankingData.clients.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-20 font-black">Vazio</div>) : (rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />))}</div></div>
+            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col h-[550px]"><div className="flex justify-between items-center mb-10 text-[11px] font-black uppercase tracking-[0.3em] text-slate-900 italic"><span className="flex items-center gap-3"><ShoppingBag className="text-rose-600" size={22}/> Matriz de Fornecedores</span></div><div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{rankingData.suppliers.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-20 font-black">Vazio</div>) : (rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />))}</div></div>
         </div>
       </div>
-      <div className="flex justify-end"><button onClick={handleDownloadPdf} disabled={generatingPdf} className="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-xl font-bold text-sm transition flex items-center gap-2 shadow-lg disabled:opacity-70">{generatingPdf ? <Loader className="animate-spin" size={16}/> : <><Printer size={16} /> Baixar PDF</>}</button></div>
-      
-      <AnimatePresence>{detailModal.open && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4" onClick={() => setDetailModal({ ...detailModal, open: false })}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}><div className="p-4 border-b flex justify-between items-center bg-slate-50"><h2 className="font-bold text-lg flex items-center gap-2"><FileText className="text-blue-600"/> {detailModal.title}</h2><button onClick={() => setDetailModal({ ...detailModal, open: false })}><X className="text-slate-400 hover:text-red-500"/></button></div><div className="p-4 overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Item</th><th className="p-3 text-right">Valor</th></tr></thead><tbody className="divide-y">{detailModal.type === 'TAXES' ? ([{l: 'ICMS', v: detailModal.data.tax_icms}, {l: 'PIS', v: detailModal.data.tax_pis}, {l: 'COFINS', v: detailModal.data.tax_cofins}, {l: 'ISS', v: detailModal.data.tax_iss}, {l: 'IRPJ', v: detailModal.data.tax_irpj}, {l: 'CSLL', v: detailModal.data.tax_csll}].sort((a,b) => b.v - a.v).map((r, i) => <tr key={i}><td className="p-3 font-medium">{r.l}</td><td className="p-3 text-right">{formatCurrency(r.v)}</td></tr>)) : (detailModal.data.map((r, i) => { let val = 0; if (detailModal.dataType === 'EXPENSE') val = Number(r.totalTaxes) + Number(r.totalPurchases) + Number(r.totalExpenses); else val = Number(r.totalRevenue); return (<tr key={i}><td className="p-3 font-medium">{r.monthKey}</td><td className="p-3 text-right font-bold text-blue-600">{formatCurrency(val)}</td></tr>); }))}</tbody></table></div></motion.div></motion.div>)}</AnimatePresence>
+
+      <div className="flex justify-end gap-5"><button onClick={handleDownloadPdf} disabled={generatingPdf} className="bg-slate-900 hover:bg-black text-white px-12 py-6 rounded-[2rem] font-black text-[12px] uppercase tracking-[0.4em] shadow-2xl transition-all flex items-center gap-4 hover:-translate-y-2">{generatingPdf ? <Loader className="animate-spin" size={20}/> : <><Printer size={20} /> Exportar Relatório Master</>}</button></div>
+
+      {/* MODAL DE TABELAS */}
+      <AnimatePresence>
+        {detailModal.open && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl flex justify-center items-center z-50 p-6" onClick={() => setDetailModal({ ...detailModal, open: false })}>
+                <motion.div initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} className="bg-white w-full max-w-6xl rounded-[4rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="p-10 border-b flex justify-between items-center bg-slate-50"><h2 className="font-black text-slate-900 uppercase tracking-[0.3em] text-sm flex items-center gap-4 italic"><FileText className="text-blue-600" size={24}/> {detailModal.title}</h2><button onClick={() => setDetailModal({ ...detailModal, open: false })} className="p-3 hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition-colors rounded-2xl"><X size={32}/></button></div>
+                    <div className="p-10 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-left"><thead className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] border-b border-slate-100"><tr><th className="pb-6">Descrição Item</th><th className="pb-6 text-right">Valor Consolidado</th></tr></thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {detailModal.type === 'CATEGORIES' ? (
+                                    detailModal.data.map((r, i) => (<tr key={i} className="hover:bg-slate-50 group"><td className="py-6 font-black text-slate-700 text-base uppercase italic">{r.name}</td><td className="py-6 text-right font-mono font-black text-slate-900 text-lg">{formatCurrency(r.total)}</td></tr>))
+                                ) : detailModal.type === 'TAXES' ? (
+                                    [{l: 'ICMS', v: detailModal.data.tax_icms}, {l: 'PIS', v: detailModal.data.tax_pis}, {l: 'COFINS', v: detailModal.data.tax_cofins}, {l: 'ISS', v: detailModal.data.tax_iss}, {l: 'IRPJ', v: detailModal.data.tax_irpj}, {l: 'CSLL', v: detailModal.data.tax_csll}].sort((a,b)=>b.v-a.v).map((r, i) => (<tr key={i} className="hover:bg-slate-50 group"><td className="py-6 font-black text-slate-700 uppercase italic text-base">{r.l}</td><td className="py-6 text-right font-mono font-black text-blue-600 text-lg">{formatCurrency(r.v)}</td></tr>))
+                                ) : (
+                                    detailModal.data.map((r, i) => (<tr key={i} className="hover:bg-slate-50 group"><td className="py-6 font-black text-slate-700 text-base italic">{r.monthKey}</td><td className="py-6 text-right font-mono font-black text-slate-900 text-lg">{formatCurrency(detailModal.dataType === 'EXPENSE' ? (Number(r.totalTaxes || 0) + Number(r.purchases_total || 0) + Number(r.expenses_total || 0)) : r.total_revenue || r.totalRevenue)}</td></tr>))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </motion.div>
+            </motion.div>
+        )}
+      </AnimatePresence>
+      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 8px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 20px; border: 2px solid #f8fafc; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; } @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in { animation: fade-in 0.8s ease-out forwards; }`}</style>
     </div>
   );
 };
