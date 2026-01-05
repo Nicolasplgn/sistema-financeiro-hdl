@@ -1,21 +1,33 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  FileText, Filter, Download, Wallet, TrendingUp, 
-  ArrowDownCircle, BarChart3, PieChart, Calendar, 
-  ChevronRight, ArrowUpRight, ArrowDownRight, Printer
+  FileText, Download, Calendar, ChevronRight, ArrowRight, ScrollText
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 const DRE = ({ apiBase, selectedCompanyId }) => {
   // CONFIGURAÇÕES DE ESTADO
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // GERAÇÃO DA LISTA DE ANOS (5 ANOS DE JANELA)
   const currentYear = new Date().getFullYear();
   const yearsList = Array.from({ length: 5 }, (valor, index) => currentYear - 2 + index);
+
+  // ESTRUTURA DO RELATÓRIO (LINHAS)
+  const reportRows = [
+    { id: 'grossRevenue', label: '1. Receita Operacional Bruta', color: 'text-blue-600', bold: true },
+    { id: 'deductions', label: '(-) Impostos e Deduções', color: 'text-rose-500' },
+    { id: 'netRevenue', label: '2. Receita Líquida', color: 'text-slate-900', bg: 'bg-slate-50', bold: true },
+    { id: 'variableCosts', label: '(-) Custos Variáveis (CMV/CSV)', color: 'text-rose-500' },
+    { id: 'grossProfit', label: '3. Margem de Contribuição', color: 'text-slate-900', bg: 'bg-slate-100', bold: true },
+    { id: 'expenses', label: '(-) Despesas Operacionais', color: 'text-rose-500' },
+    { id: 'netResult', label: '4. Resultado Líquido (EBITDA)', color: 'text-emerald-600', bold: true, bg: 'bg-emerald-50' },
+  ];
 
   // BUSCA DE DADOS NO BACKEND
   const fetchDRE = async () => {
@@ -25,9 +37,10 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
       const response = await axios.get(`${apiBase}/api/reports/dre`, {
         params: { companyId: selectedCompanyId, year: year }
       });
-      setData(response.data);
+      setData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Erro ao buscar relatório DRE:", error);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -38,56 +51,81 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
   }, [selectedCompanyId, year, apiBase]);
 
   // FUNÇÕES AUXILIARES DE CÁLCULO E FORMATAÇÃO
-  const getTotal = (field) => data.reduce((acumulador, atual) => acumulador + (Number(atual[field]) || 0), 0);
-  
-  const formatCurrency = (valor) => {
-    return new Intl.NumberFormat('pt-BR', { 
-      style: 'currency', 
-      currency: 'BRL' 
-    }).format(valor || 0);
+  const formatBRL = (val) => {
+    const num = Number(val);
+    if (isNaN(num) || num === 0) return '-';
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  const calculateAV = (valor, receitaTotal) => {
-    if (!receitaTotal || receitaTotal === 0) return '0.0%';
-    return ((valor / receitaTotal) * 100).toFixed(1) + '%';
+  const calculateTotal = (field) => data.reduce((acc, curr) => acc + (Number(curr[field]) || 0), 0);
+  const totalGrossRevenue = calculateTotal('grossRevenue');
+
+  const calculateAV = (val, total) => {
+      if (!total || total === 0) return '0.0%';
+      return ((val / total) * 100).toFixed(1) + '%';
   };
 
-  // DEFINIÇÃO DA ESTRUTURA DA DRE (ORDEM CONTÁBIL)
-  const rows = [
-    { label: '1. RECEITA BRUTA OPERACIONAL', field: 'grossRevenue', style: 'text-blue-600 font-black bg-blue-50/30' },
-    { label: '(-) Deduções e Impostos', field: 'deductions', style: 'text-rose-500 font-medium' },
-    { label: '2. RECEITA LÍQUIDA', field: 'netRevenue', style: 'font-bold bg-slate-100/80 text-slate-900 border-y border-slate-200' },
-    { label: '(-) Custos de Mercadorias (CMV)', field: 'variableCosts', style: 'text-amber-600 font-medium' },
-    { label: '3. MARGEM DE CONTRIBUIÇÃO', field: 'grossProfit', style: 'font-bold bg-slate-100/80 text-slate-900 border-y border-slate-200' },
-    { label: '(-) Despesas Operacionais / Analíticas', field: 'expenses', style: 'text-slate-500 font-medium' },
-    { label: '4. RESULTADO LÍQUIDO DO EXERCÍCIO', field: 'netResult', style: 'font-black text-sm bg-slate-900 text-white rounded-b-lg' },
-  ];
-
-  // EXPORTAÇÃO PARA CSV (FORMATO EXCEL)
-  const handleExportCSV = () => {
-    if (data.length === 0) return alert("Não há dados para exportar no momento.");
+  // EXPORTAÇÃO EXCEL DETALHADA
+  const handleExportDetailed = async () => {
+    if (!selectedCompanyId) return;
+    setExporting(true);
     
-    let csvContent = "Estrutura DRE;Total Anual;Analise Vertical %;Jan;Fev;Mar;Abr;Mai;Jun;Jul;Ago;Set;Out;Nov;Dez\n";
-    const totalYearRevenue = getTotal('grossRevenue');
+    try {
+        const response = await axios.get(`${apiBase}/api/reports/dre/detailed`, {
+            params: { companyId: selectedCompanyId, year: year }
+        });
+        
+        const detailedData = response.data || [];
+        if (detailedData.length === 0) return alert("Sem dados para exportar.");
 
-    rows.forEach(linha => {
-      const valorTotal = getTotal(linha.field);
-      const av = linha.field !== 'grossRevenue' ? calculateAV(valorTotal, totalYearRevenue) : '100%';
-      let csvRow = `${linha.label};"${formatCurrency(valorTotal)}";${av}`;
-      
-      data.forEach(mes => {
-        csvRow += `;"${formatCurrency(mes[linha.field])}"`;
-      });
-      csvContent += csvRow + "\n";
-    });
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet(`DRE Analítica ${year}`);
+        
+        sheet.mergeCells('A1:D2');
+        const titleCell = sheet.getCell('A1');
+        titleCell.value = 'VECTOR CONNECT | DRE ANALÍTICA DETALHADA';
+        titleCell.font = { name: 'Arial Black', size: 14, color: { argb: 'FFFFFFFF' } };
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `DRE_Vector_${year}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+        sheet.getRow(4).values = ['TIPO', 'CÓDIGO', 'DESCRIÇÃO DA CONTA', 'VALOR ACUMULADO'];
+        const header = sheet.getRow(4);
+        header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        header.eachCell(cell => { 
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        detailedData.forEach(row => {
+            const r = sheet.addRow([row.type, row.code, row.desc, row.value]);
+            if (row.type === 'S') {
+                r.font = { bold: true };
+                r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+            }
+            if (row.value < 0) {
+                r.getCell(4).font = { color: { argb: 'FFFF0000' }, bold: row.type === 'S' };
+            } else if (row.type === 'S' && row.value > 0) {
+                r.getCell(4).font = { color: { argb: 'FF10B981' }, bold: true };
+            }
+            r.getCell(4).numFmt = '"R$" #,##0.00';
+            r.getCell(1).alignment = { horizontal: 'center' };
+            r.getCell(2).alignment = { horizontal: 'center' };
+        });
+
+        sheet.getColumn(1).width = 10;
+        sheet.getColumn(2).width = 15;
+        sheet.getColumn(3).width = 60;
+        sheet.getColumn(4).width = 25;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `DRE_Analitica_Vector_${year}.xlsx`);
+
+    } catch (error) {
+        console.error("Erro exportação:", error);
+        alert("Erro ao gerar relatório detalhado.");
+    } finally {
+        setExporting(false);
+    }
   };
 
   if (!selectedCompanyId) {
@@ -102,11 +140,11 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
   }
 
   return (
-    <div className="p-6 w-full animate-in fade-in duration-700 pb-20">
+    <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in pb-20">
       
-      {/* CABEÇALHO DO RELATÓRIO */}
+      {/* HEADER DO RELATÓRIO */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
-        <div className="space-y-1">
+        <div>
           <div className="flex items-center gap-2 text-emerald-600 font-black text-[10px] tracking-[0.2em] uppercase mb-1">
             <div className="w-8 h-1 bg-emerald-500 rounded-full" /> Financial Report
           </div>
@@ -131,91 +169,81 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
           </div>
 
           <button 
-            onClick={handleExportCSV} 
-            className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-3 hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 active:scale-95"
+            onClick={handleExportDetailed} 
+            disabled={exporting}
+            className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-3 hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 active:scale-95 disabled:opacity-50"
           >
-            <Download size={18}/> 
-            Exportar Dados
+            {exporting ? <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"/> : <Download size={18}/>}
+            Exportar Excel
           </button>
         </div>
       </div>
 
-      {/* QUADRO DE RESUMO RÁPIDO */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Faturamento Anual</p>
-            <p className="text-2xl font-black text-slate-900 font-mono">{formatCurrency(getTotal('grossRevenue'))}</p>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Resultado Líquido</p>
-            <p className={`text-2xl font-black font-mono ${getTotal('netResult') >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatCurrency(getTotal('netResult'))}</p>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Margem Líquida Média</p>
-            <p className="text-2xl font-black text-slate-900 font-mono">{calculateAV(getTotal('netResult'), getTotal('grossRevenue'))}</p>
-          </motion.div>
+      {/* AVISO DE SCROLL (PARA MONITOR MENOR) */}
+      <div className="flex items-center justify-end gap-2 text-slate-400 mb-2 text-[10px] font-bold uppercase tracking-widest opacity-60">
+         <ScrollText size={14}/> Role para o lado para ver o ano completo <ArrowRight size={14}/>
       </div>
 
-      {/* TABELA DRE PROCESSADA */}
+      {/* TABELA DRE COM SCROLL TITAN */}
       <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col relative">
         {loading ? (
           <div className="p-24 text-center text-slate-400 flex flex-col items-center gap-4">
             <div className="w-10 h-10 border-4 border-slate-100 border-t-emerald-500 rounded-full animate-spin"></div>
-            <p className="font-black text-[10px] uppercase tracking-widest">Consolidando Lançamentos Analíticos...</p>
+            <p className="font-black text-[10px] uppercase tracking-widest">Calculando Resultados...</p>
           </div>
         ) : (
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[1200px]">
+          <div className="overflow-x-auto custom-scrollbar pb-6">
+            {/* Largura mínima grande para forçar scroll horizontal quando necessário */}
+            <table className="w-full text-left border-collapse min-w-[2400px]">
               <thead>
-                <tr className="bg-slate-50/80 backdrop-blur-md sticky top-0 z-40 border-b border-slate-100">
-                  <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-slate-50 z-50 border-r border-slate-100">
-                    Estrutura de Resultados
-                  </th>
-                  <th className="p-6 text-right text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-100/50 border-r border-slate-100">
-                    Total Acumulado
-                  </th>
-                  <th className="p-6 text-right text-[10px] font-black text-emerald-600 uppercase tracking-widest border-r border-slate-100">
-                    A.V. %
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  {/* COLUNA CONGELADA (STICKY) */}
+                  <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-slate-50 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] w-80 border-r border-slate-200">
+                    Estrutura de Contas
                   </th>
                   {Array.from({ length: 12 }).map((valorMes, indexMes) => (
-                    <th key={indexMes} className="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px]">
-                      {new Date(0, indexMes).toLocaleDateString('pt-BR', { month: 'short' })}
+                    <th key={indexMes} className="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[140px]">
+                      {new Date(0, indexMes).toLocaleDateString('pt-BR', { month: 'short' })}.
                     </th>
                   ))}
+                  <th className="p-6 text-right text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-100/50 border-l border-slate-200 min-w-[160px]">
+                    Total Ano
+                  </th>
+                  <th className="p-6 text-right text-[10px] font-black text-blue-600 uppercase tracking-widest min-w-[100px]">
+                    AV %
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {rows.map((linha, indexLinha) => {
-                  const valorTotalAno = getTotal(linha.field);
-                  const faturamentoTotalAno = getTotal('grossRevenue');
-                  const ehResultadoNegativo = linha.field === 'netResult' && valorTotalAno < 0;
+              <tbody className="divide-y divide-slate-50 text-xs">
+                {reportRows.map((row) => {
+                  const rowTotal = calculateTotal(row.id);
+                  const av = totalGrossRevenue > 0 ? (rowTotal / totalGrossRevenue) * 100 : 0;
 
                   return (
-                    <tr key={indexLinha} className={`group transition-colors ${linha.style.includes('bg-') ? '' : 'hover:bg-slate-50/50'}`}>
-                      {/* COLUNA FIXA: DESCRIÇÃO */}
-                      <td className={`p-5 px-6 sticky left-0 z-30 font-bold border-r border-slate-100 shadow-xl shadow-slate-900/5 ${linha.style} ${linha.style.includes('bg-') ? '' : 'bg-white group-hover:bg-slate-50'}`}>
-                        <div className="flex items-center gap-3">
-                          <ChevronRight size={14} className="opacity-30" />
-                          {linha.label}
-                        </div>
+                    <tr key={row.id} className={`group hover:bg-blue-50/10 transition-colors ${row.bg || ''}`}>
+                      {/* COLUNA CONGELADA (STICKY) */}
+                      <td className={`p-6 sticky left-0 z-20 border-r border-slate-100 ${row.bg || 'bg-white group-hover:bg-blue-50/10'} font-black text-slate-700 uppercase tracking-tight flex items-center gap-3 h-full shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]`}>
+                        {row.bold ? <ChevronRight size={14} className="text-emerald-500 shrink-0"/> : <div className="w-3.5"/>}
+                        <span className={row.color}>{row.label}</span>
                       </td>
                       
-                      {/* COLUNA TOTAL ANUAL */}
-                      <td className={`p-5 px-6 text-right font-mono font-black border-r border-slate-100 bg-slate-50/30 ${linha.style}`}>
-                        {formatCurrency(valorTotalAno)}
-                      </td>
-                      
-                      {/* COLUNA ANALISE VERTICAL */}
-                      <td className="p-5 px-6 text-right font-mono font-bold text-[11px] text-slate-400 border-r border-slate-100 bg-slate-50/10">
-                        {linha.field !== 'grossRevenue' ? calculateAV(valorTotalAno, faturamentoTotalAno) : '100%'}
-                      </td>
-
-                      {/* COLUNAS MENSAIS (DATA) */}
-                      {data.map((mesData, indexMesData) => (
-                        <td key={indexMesData} className={`p-5 px-6 text-right font-mono text-xs font-bold ${linha.field === 'netResult' ? (mesData[linha.field] >= 0 ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-600'}`}>
-                          {mesData[linha.field] !== 0 ? formatCurrency(mesData[linha.field]) : <span className="opacity-20">-</span>}
+                      {/* 12 MESES */}
+                      {data.map((monthData, idx) => (
+                        <td key={idx} className={`p-6 text-right font-mono font-bold ${row.color} opacity-90 text-sm`}>
+                          {formatBRL(monthData[row.id])}
                         </td>
                       ))}
+                      
+                      {/* Preenche meses vazios caso o banco não retorne todos */}
+                      {Array.from({length: 12 - data.length}).map((_, i) => <td key={`empty-${i}`} className="p-6 text-right text-slate-300">-</td>)}
+
+                      {/* TOTAIS */}
+                      <td className="p-6 text-right font-mono font-black text-slate-900 bg-slate-50/50 border-l border-slate-100 text-sm">
+                         {formatBRL(rowTotal)}
+                      </td>
+                      <td className="p-6 text-right font-mono font-bold text-blue-600 text-sm">
+                         {av.toFixed(1)}%
+                      </td>
                     </tr>
                   );
                 })}
@@ -224,30 +252,29 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
           </div>
         )}
       </div>
-      
-      {/* RODAPÉ INFORMATIVO */}
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 flex items-start gap-4 shadow-sm">
-            <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600"><BarChart3 size={20}/></div>
-            <div>
-              <h4 className="font-black text-slate-800 text-xs uppercase tracking-widest mb-1">Impacto Analítico</h4>
-              <p className="text-xs text-slate-400 leading-relaxed font-medium">Os valores apresentados incluem automaticamente os lançamentos realizados no módulo analítico (Entradas e Saídas avulsas), permitindo uma visão fiel do fluxo de caixa e competência.</p>
-            </div>
-        </div>
-        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 flex items-start gap-4 shadow-xl">
-            <div className="p-3 bg-white/10 rounded-2xl text-blue-400"><PieChart size={20}/></div>
-            <div>
-              <h4 className="font-black text-white text-xs uppercase tracking-widest mb-1">Margem de Contribuição</h4>
-              <p className="text-xs text-slate-400 leading-relaxed font-medium">Representa o quanto a operação gera de sobra após pagar os custos variáveis e impostos, fundamental para cobrir as despesas fixas e gerar lucro líquido.</p>
-            </div>
-        </div>
-      </div>
 
+      {/* CSS CUSTOMIZADO PARA A BARRA DE ROLAGEM TITAN */}
       <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        /* Barra de fundo (Track) */
+        .custom-scrollbar::-webkit-scrollbar { 
+            height: 18px; /* Altura maior para facilitar o clique */
+        }
+        .custom-scrollbar::-webkit-scrollbar-track { 
+            background: #e2e8f0; 
+            border-radius: 9px; 
+            margin: 0 4px; /* Margem lateral para não colar */
+        }
+        /* Botão de arrastar (Thumb) - COR ESCURA (BLACK PREMIUM) */
+        .custom-scrollbar::-webkit-scrollbar-thumb { 
+            background: #1e293b; /* Slate-800: Escuro e visível */
+            border-radius: 9px; 
+            border: 4px solid #e2e8f0; /* Borda cria efeito de pílula flutuante */
+        }
+        /* Hover no botão */
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { 
+            background: #0f172a; /* Slate-900: Quase preto no hover */
+            cursor: pointer;
+        }
       `}} />
     </div>
   );
