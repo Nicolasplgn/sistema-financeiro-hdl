@@ -19,7 +19,7 @@ import QuestorManager from './pages/QuestorManager';
 
 const API_BASE = `http://${window.location.hostname}:4000`;
 
-// COMPONENTE DE BLOQUEIO PARA GRUPOS (VISUAL PREMIUM)
+// COMPONENTE DE BLOQUEIO PARA GRUPOS
 const GroupRestriction = ({ moduleName }) => (
   <div className="h-[70vh] flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
     <div className="w-24 h-24 bg-slate-100 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-inner relative">
@@ -41,7 +41,7 @@ const GroupRestriction = ({ moduleName }) => (
 );
 
 const App = () => {
-  // Estado de Usuário persistido
+  // 1. MEMÓRIA DE USUÁRIO
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem('hdl_user');
@@ -49,7 +49,7 @@ const App = () => {
     } catch (e) { return null; }
   });
 
-  // Estado da Entidade Selecionada (Pode ser 'company' ou 'group')
+  // 2. MEMÓRIA DE ENTIDADE (EMPRESA/GRUPO)
   const [selectedEntity, setSelectedEntity] = useState(() => {
     try {
       const stored = localStorage.getItem('vector_entity');
@@ -60,11 +60,10 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  // Listas para o dropdown de seleção
   const [companies, setCompanies] = useState([]);
   const [groups, setGroups] = useState([]);
 
-  // Carrega dados iniciais ao logar
+  // Carrega dados iniciais
   useEffect(() => {
     if (user) {
         axios.get(`${API_BASE}/api/companies`).then(res => setCompanies(res.data)).catch(err => console.error(err));
@@ -75,14 +74,17 @@ const App = () => {
     }
   }, [user]);
 
-  // Persiste a seleção de entidade
+  // PERSISTÊNCIA AUTOMÁTICA DA ENTIDADE SELECIONADA
   useEffect(() => {
-    if (selectedEntity.id) localStorage.setItem('vector_entity', JSON.stringify(selectedEntity));
-    else localStorage.removeItem('vector_entity');
+    if (selectedEntity.id) {
+        localStorage.setItem('vector_entity', JSON.stringify(selectedEntity));
+    } else {
+        localStorage.removeItem('vector_entity');
+    }
   }, [selectedEntity]);
 
   const handleLogout = () => {
-    localStorage.clear();
+    localStorage.clear(); // Limpa tudo, inclusive filtros
     setUser(null);
     setSelectedEntity({ type: null, id: null, name: '' });
     window.location.reload();
@@ -109,7 +111,7 @@ const App = () => {
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
       
-      {/* SIDEBAR CORPORATIVA */}
+      {/* SIDEBAR */}
       <aside className={`${isSidebarCollapsed ? 'w-24' : 'w-72'} bg-slate-900 h-screen fixed left-0 top-0 z-50 transition-all duration-500 flex flex-col border-r border-slate-800 shadow-2xl`}>
         <div className="h-24 flex items-center justify-center border-b border-white/5 relative shrink-0">
           <div className={`flex items-center transition-all duration-500 gap-4 ${isSidebarCollapsed ? 'px-0' : 'px-6'}`}>
@@ -223,7 +225,7 @@ const App = () => {
             <>
               {activeTab === 'dashboard' && <Dashboard companyId={selectedEntity.type === 'company' ? selectedEntity.id : null} groupId={selectedEntity.type === 'group' ? selectedEntity.id : null} apiBase={API_BASE} />}
               
-              {/* LÓGICA DE BLOQUEIO DE GRUPO PARA BI E LANÇAMENTOS */}
+              {/* BLOQUEIO DE GRUPOS */}
               {activeTab === 'inteligencia' && (
                   selectedEntity.type === 'group' 
                     ? <GroupRestriction moduleName="Monitor de Saúde BI" />
@@ -236,7 +238,7 @@ const App = () => {
                     : <FinancialEntries companyId={selectedEntity.id} apiBase={API_BASE} />
               )}
 
-              {/* DEMAIS MÓDULOS (COMPATÍVEIS COM GRUPO) */}
+              {/* MÓDULOS COMPATÍVEIS */}
               {activeTab === 'analytical' && <AnalyticalProjections globalCompanyId={selectedEntity.type === 'company' ? selectedEntity.id : null} apiBase={API_BASE} />}
               {activeTab === 'dre' && <DRE selectedCompanyId={selectedEntity.type === 'company' ? selectedEntity.id : null} apiBase={API_BASE} />}
               {activeTab === 'companies' && <Companies apiBase={API_BASE} onSelectCompany={(id, name) => { setSelectedEntity({ type: 'company', id, name }); setActiveTab('dashboard'); }} />}

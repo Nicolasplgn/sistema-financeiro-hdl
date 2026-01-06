@@ -10,7 +10,7 @@ import axios from 'axios';
 
 /**
  * MÓDULO DE INTELIGÊNCIA E BI - VECTOR CONNECT ENTERPRISES
- * Versão: 3.3 - Navegação Ativa e Calibragem
+ * Versão: 3.4 - Memória de Filtro (Persistência)
  */
 const IntelligenceHub = ({ companyId, apiBase, onNavigate }) => {
   const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
@@ -24,7 +24,19 @@ const IntelligenceHub = ({ companyId, apiBase, onNavigate }) => {
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  // MEMÓRIA DE FILTRO: ANO SELECIONADO
+  const [selectedYear, setSelectedYear] = useState(() => {
+    try {
+        const saved = localStorage.getItem('vector_bi_year');
+        return saved ? JSON.parse(saved) : new Date().getFullYear();
+    } catch(e) { return new Date().getFullYear(); }
+  });
+
+  // Salva sempre que mudar
+  useEffect(() => {
+    localStorage.setItem('vector_bi_year', JSON.stringify(selectedYear));
+  }, [selectedYear]);
 
   // ESTADOS PARA DEFINIÇÃO DE META
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -137,8 +149,7 @@ const IntelligenceHub = ({ companyId, apiBase, onNavigate }) => {
     );
   }
 
-  // --- CONFIGURAÇÃO DOS CARDS DE AUDITORIA ---
-  // AQUI O MÁGICO ACONTECE: Mapeamos o destino da navegação
+  // CONFIGURAÇÃO DOS CARDS DE AUDITORIA
   const auditCards = [
      { label: 'Arquivos Integrados', desc: 'Layouts Questor gerados.', icon: Landmark, color: 'blue', target: 'questor' },
      { label: 'Drill-down DRE', desc: 'Explosão analítica do resultado.', icon: PieChart, color: 'emerald', target: 'dre' },

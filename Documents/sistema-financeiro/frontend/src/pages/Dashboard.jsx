@@ -4,7 +4,8 @@ import {
   Wallet, TrendingUp, TrendingDown, Building2, Printer, 
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
   RotateCcw, BarChart3, Layers, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, Trophy, Medal, Target, Activity, Receipt, FileCode
+  Users, ShoppingBag, Trophy, Medal, Target, Activity, Receipt, FileCode,
+  CalendarRange // Novo ícone
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -73,13 +74,35 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
   const [reportData, setReportData] = useState(null);
   const [rankingData, setRankingData] = useState({ clients: [], suppliers: [] });
   const [loading, setLoading] = useState(false);
-  const [period, setPeriod] = useState({ start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` });
+  
+  // MEMÓRIA DE FILTRO: PERÍODO
+  const [period, setPeriod] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vector_dash_period');
+      return saved ? JSON.parse(saved) : { start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` };
+    } catch(e) { return { start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` }; }
+  });
+
+  // Salva o filtro sempre que mudar
+  useEffect(() => {
+    localStorage.setItem('vector_dash_period', JSON.stringify(period));
+  }, [period]);
+
   const [detailModal, setDetailModal] = useState({ open: false, type: null, data: null, title: '', dataType: 'REVENUE' });
   const [generatingPdf, setGeneratingPdf] = useState(false);
   
   const printRef = useRef();
 
   const formatCurrency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  // FUNÇÃO PARA SETAR ANO ATUAL
+  const handleSetCurrentYear = () => {
+    const currentYear = new Date().getFullYear();
+    setPeriod({
+        start: `${currentYear}-01`,
+        end: `${currentYear}-12`
+    });
+  };
 
   // 1. EXPORTAÇÃO EXCEL
   const handleExportExcel = async () => {
@@ -290,11 +313,24 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
                     <button onClick={handleExportExcel} className="px-6 py-4 bg-slate-900 hover:bg-black text-white rounded-2xl shadow-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all hover:-translate-y-1"><FileSpreadsheet size={16}/> Excel</button>
                     <button onClick={handleExportHTML} className="px-6 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl shadow-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 hover:-translate-y-1"><FileCode size={16}/> Web</button>
                 </div>
-                <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm ring-4 ring-slate-100/50">
-                    <Filter size={20} className="text-slate-400 ml-2"/>
-                    <input type="month" value={period.start} onChange={(e) => setPeriod({...period, start: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-[10px] outline-none uppercase cursor-pointer"/>
-                    <span className="text-slate-300 font-black">➜</span>
-                    <input type="month" value={period.end} onChange={(e) => setPeriod({...period, end: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-[10px] outline-none uppercase cursor-pointer"/>
+
+                <div className="flex items-center gap-2">
+                    {/* BOTÃO NOVO: ANO ATUAL */}
+                    <button 
+                        onClick={handleSetCurrentYear}
+                        className="p-3 bg-white border border-slate-200 rounded-2xl text-blue-600 hover:bg-blue-50 transition-all shadow-sm flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"
+                        title="Filtrar Ano Atual"
+                    >
+                        <CalendarRange size={18} />
+                        <span className="hidden sm:inline">Ano Atual</span>
+                    </button>
+
+                    <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm ring-4 ring-slate-100/50">
+                        <Filter size={20} className="text-slate-400 ml-2"/>
+                        <input type="month" value={period.start} onChange={(e) => setPeriod({...period, start: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-[10px] outline-none uppercase cursor-pointer"/>
+                        <span className="text-slate-300 font-black">➜</span>
+                        <input type="month" value={period.end} onChange={(e) => setPeriod({...period, end: e.target.value})} className="border-none bg-transparent text-slate-900 font-black text-[10px] outline-none uppercase cursor-pointer"/>
+                    </div>
                 </div>
               </div>
           </div>
