@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   LayoutDashboard, DollarSign, Building2, ChevronLeft, ChevronRight, LogOut, Users, ShieldAlert,
-  FileText, XCircle, Briefcase, Zap, BrainCircuit, Activity, Layers, Target, CloudLightning, Lock
+  FileText, XCircle, Briefcase, Zap, BrainCircuit, Activity, Layers, Target, CloudLightning, Lock, Tag, Box
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Importação das Páginas
 import Dashboard from './pages/Dashboard';
 import FinancialEntries from './pages/FinancialEntries';
 import IntelligenceHub from './pages/IntelligenceHub';
@@ -16,10 +17,13 @@ import AuditLogs from './pages/AuditLogs';
 import DRE from './pages/DRE';
 import Login from './pages/Login';
 import QuestorManager from './pages/QuestorManager';
+import PricingSimulator from './pages/PricingSimulator'; 
+import ProductManager from './pages/ProductManager'; 
 
+// Configuração da API
 const API_BASE = `http://${window.location.hostname}:4000`;
 
-// COMPONENTE DE BLOQUEIO PARA GRUPOS
+// COMPONENTE DE BLOQUEIO PARA GRUPOS (HOLDING)
 const GroupRestriction = ({ moduleName }) => (
   <div className="h-[70vh] flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
     <div className="w-24 h-24 bg-slate-100 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-inner relative">
@@ -32,7 +36,7 @@ const GroupRestriction = ({ moduleName }) => (
       Modo Consolidado Ativo
     </h2>
     <p className="text-slate-500 mb-8 text-sm font-medium leading-relaxed max-w-md">
-      O módulo <strong>{moduleName}</strong> requer dados granulares e está disponível apenas na visualização individual por unidade.
+      O módulo <strong>{moduleName}</strong> requer dados granulares e está disponível apenas na visualização individual por unidade (CNPJ).
     </p>
     <div className="px-6 py-3 bg-amber-50 border border-amber-100 text-amber-700 rounded-2xl text-xs font-black uppercase tracking-widest">
       Selecione uma empresa específica para acessar
@@ -63,7 +67,7 @@ const App = () => {
   const [companies, setCompanies] = useState([]);
   const [groups, setGroups] = useState([]);
 
-  // Carrega dados iniciais
+  // Carrega dados iniciais ao logar
   useEffect(() => {
     if (user) {
         axios.get(`${API_BASE}/api/companies`).then(res => setCompanies(res.data)).catch(err => console.error(err));
@@ -74,7 +78,7 @@ const App = () => {
     }
   }, [user]);
 
-  // PERSISTÊNCIA AUTOMÁTICA DA ENTIDADE SELECIONADA
+  // Persistência da entidade selecionada
   useEffect(() => {
     if (selectedEntity.id) {
         localStorage.setItem('vector_entity', JSON.stringify(selectedEntity));
@@ -84,7 +88,7 @@ const App = () => {
   }, [selectedEntity]);
 
   const handleLogout = () => {
-    localStorage.clear(); // Limpa tudo, inclusive filtros
+    localStorage.clear(); 
     setUser(null);
     setSelectedEntity({ type: null, id: null, name: '' });
     window.location.reload();
@@ -131,6 +135,8 @@ const App = () => {
         <div className="flex-1 overflow-y-auto py-8 px-4 space-y-2 custom-scrollbar">
           {!isSidebarCollapsed && <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 opacity-50">Inteligência</p>}
           <SidebarItem id="dashboard" icon={LayoutDashboard} label="Visão Geral" />
+          <SidebarItem id="pricing" icon={Tag} label="Simulador Preços" color="text-amber-500" />
+          <SidebarItem id="products_manager" icon={Box} label="Cadastro / Custos" color="text-emerald-500" />
           <SidebarItem id="inteligencia" icon={BrainCircuit} label="Monitor de Saúde" color="text-emerald-500" />
           <SidebarItem id="analytical" icon={Activity} label="Projeções BI" color="text-blue-400" />
           
@@ -166,6 +172,8 @@ const App = () => {
           <div className="flex items-center gap-4">
              <div className="p-3 bg-slate-900 rounded-2xl text-white shadow-xl">
                 {activeTab === 'dashboard' && <LayoutDashboard size={22}/>}
+                {activeTab === 'pricing' && <Tag size={22}/>}
+                {activeTab === 'products_manager' && <Box size={22}/>}
                 {activeTab === 'inteligencia' && <BrainCircuit size={22}/>}
                 {activeTab === 'analytical' && <Activity size={22}/>}
                 {activeTab === 'dre' && <FileText size={22}/>}
@@ -178,6 +186,8 @@ const App = () => {
              <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase italic">
                 {activeTab === 'companies' ? 'Gestão Corporativa' : 
                  activeTab === 'dashboard' ? 'Performance Executiva' : 
+                 activeTab === 'pricing' ? 'Precificação Industrial' : 
+                 activeTab === 'products_manager' ? 'Cadastro de Materiais' : 
                  activeTab === 'questor' ? 'Bridge Connector' : activeTab}
              </h2>
           </div>
@@ -225,7 +235,21 @@ const App = () => {
             <>
               {activeTab === 'dashboard' && <Dashboard companyId={selectedEntity.type === 'company' ? selectedEntity.id : null} groupId={selectedEntity.type === 'group' ? selectedEntity.id : null} apiBase={API_BASE} />}
               
-              {/* BLOQUEIO DE GRUPOS */}
+              {/* MÓDULO PRICING (SIMULADOR) */}
+              {activeTab === 'pricing' && (
+                  selectedEntity.type === 'group' 
+                    ? <GroupRestriction moduleName="Simulador de Preços Industrial" />
+                    : <PricingSimulator apiBase={API_BASE} selectedCompanyId={selectedEntity.id} />
+              )}
+
+              {/* MÓDULO CADASTRO (NOVO) */}
+              {activeTab === 'products_manager' && (
+                  selectedEntity.type === 'group' 
+                    ? <GroupRestriction moduleName="Gestão de Cadastro" />
+                    : <ProductManager apiBase={API_BASE} selectedCompanyId={selectedEntity.id} />
+              )}
+
+              {/* OUTROS MÓDULOS */}
               {activeTab === 'inteligencia' && (
                   selectedEntity.type === 'group' 
                     ? <GroupRestriction moduleName="Monitor de Saúde BI" />
@@ -238,7 +262,6 @@ const App = () => {
                     : <FinancialEntries companyId={selectedEntity.id} apiBase={API_BASE} />
               )}
 
-              {/* MÓDULOS COMPATÍVEIS */}
               {activeTab === 'analytical' && <AnalyticalProjections globalCompanyId={selectedEntity.type === 'company' ? selectedEntity.id : null} apiBase={API_BASE} />}
               {activeTab === 'dre' && <DRE selectedCompanyId={selectedEntity.type === 'company' ? selectedEntity.id : null} apiBase={API_BASE} />}
               {activeTab === 'companies' && <Companies apiBase={API_BASE} onSelectCompany={(id, name) => { setSelectedEntity({ type: 'company', id, name }); setActiveTab('dashboard'); }} />}

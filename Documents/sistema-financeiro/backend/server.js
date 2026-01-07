@@ -5,7 +5,7 @@ const mysql = require('mysql2/promise');
 const axios = require('axios');
 const https = require('https');
 
-// IMPORTAÇÃO DOS SERVIÇOS DE INTEGRAÇÃO
+// IMPORTAÇÃO DOS SERVIÇOS
 const { 
     generateQuestorLayout, 
     generateNFSeXML, 
@@ -13,67 +13,223 @@ const {
     fetchTaxDebts 
 } = require('./services/questorService');
 
+// IMPORTAÇÃO DO SERVIÇO DE PRICING
+const PricingService = require('./services/PricingService');
+
 const app = express();
 const PORT = 4000;
 
+// CONFIGURAÇÃO DE MIDDLEWARES
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 
+// AGENTE HTTPS PARA REQUISIÇÕES EXTERNAS
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+// CONFIGURAÇÃO DO POOL DE CONEXÃO COM O BANCO DE DADOS
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'financeiro',
-  dateStrings: true,
-  supportBigNumbers: true,
-  bigNumberStrings: false,
-  waitForConnections: true,
-  connectionLimit: 20
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'financeiro',
+    dateStrings: true,
+    supportBigNumbers: true,
+    bigNumberStrings: false,
+    waitForConnections: true,
+    connectionLimit: 20
 });
 
-// FUNÇÃO SEGURA PARA EVITAR NaN
+// =================================================================================
+// FUNÇÕES UTILITÁRIAS
+// =================================================================================
+
 const amountOrZero = (valor) => {
     const num = Number(valor);
     return isNaN(num) ? 0 : num;
 };
 
 const logAction = async (userId, userName, action, details) => { 
-  try { 
-    await pool.execute(
-        'INSERT INTO audit_logs (user_id, user_name, action, details) VALUES (?, ?, ?, ?)', 
-        [userId || 0, userName || 'Sistema', action, details]
-    ); 
-  } catch(error){ console.error("Erro log:", error.message); } 
+    try { 
+        await pool.execute(
+            'INSERT INTO audit_logs (user_id, user_name, action, details) VALUES (?, ?, ?, ?)', 
+            [userId || 0, userName || 'Sistema', action, details]
+        ); 
+    } catch(error){ 
+        console.error("Erro ao salvar log de auditoria:", error.message); 
+    } 
 };
 
 // =================================================================================
-// ROTAS GERAIS E CRUD (MANTIDAS)
+// MÓDULO: GESTÃO DE CADASTRO (PRODUTOS E MATERIAIS)
+// =================================================================================
+
+// Criar Novo Material (Insumo)
+app.post('/api/materials', async (request, response) => {
+    const { company_id, name, ncm, price_national, price_imported, ipi_percent, is_national } = request.body;
+    try {
+        const [result] = await pool.execute(
+            `INSERT INTO materials (company_id, name, ncm, price_national, price_imported, ipi_percent, is_national) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [company_id, name, ncm, price_national || 0, price_imported || 0, ipi_percent || 0, is_national ? 1 : 0]
+        );
+        response.json({ success: true, id: result.insertId });
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// Listar Materiais Detalhado (Para a tela de Gestão)
+app.get('/api/materials-full', async (request, response) => {
+    const { companyId } = request.query;
+    try {
+        const [rows] = await pool.execute('SELECT * FROM materials WHERE company_id = ? ORDER BY id DESC LIMIT 100', [companyId]);
+        response.json(rows);
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// Deletar Material
+app.delete('/api/materials/:id', async (request, response) => {
+    try {
+        await pool.execute('DELETE FROM materials WHERE id = ?', [request.params.id]);
+        response.json({ success: true });
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// Criar Novo Produto (Bike/Acabado)
+app.post('/api/products', async (request, response) => {
+    const { company_id, name, sku } = request.body;
+    try {
+        const [result] = await pool.execute(
+            'INSERT INTO products (company_id, name, sku) VALUES (?, ?, ?)',
+            [company_id, name, sku]
+        );
+        response.json({ success: true, id: result.insertId });
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// Deletar Produto
+app.delete('/api/products/:id', async (request, response) => {
+    try {
+        await pool.execute('DELETE FROM products WHERE id = ?', [request.params.id]);
+        response.json({ success: true });
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// =================================================================================
+// MÓDULO: PRICING & MARKUP
+// =================================================================================
+
+app.get('/api/price-calc', async (request, response) => {
+    try {
+        const { productId, channelId } = request.query;
+        if (!productId || !channelId) {
+            return response.status(400).json({ error: 'IDs do Produto e do Canal são obrigatórios.' });
+        }
+        const result = await PricingService.calculateProductPrice(productId, channelId);
+        response.json(result);
+    } catch (error) {
+        console.error("Erro no cálculo de preço:", error);
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// ROTA ATUALIZADA: LISTA CANAIS DA EMPRESA + CANAIS GLOBAIS (MATRIZ)
+app.get('/api/sales-channels', async (request, response) => {
+    try {
+        const { companyId } = request.query;
+        const targetId = companyId ? parseInt(companyId) : 0;
+        
+        // Busca canais da empresa atual OU da primeira empresa criada (Matriz/Importação)
+        const query = `
+            SELECT * FROM sales_channels 
+            WHERE company_id = ? 
+            OR company_id = (SELECT id FROM companies ORDER BY id ASC LIMIT 1) 
+            ORDER BY name ASC
+        `;
+        
+        const [rows] = await pool.execute(query, [targetId]);
+        
+        // Ordena para que os canais da empresa atual fiquem no topo da prioridade
+        const sortedRows = rows.sort((a, b) => {
+            if (a.company_id === targetId && b.company_id !== targetId) return -1;
+            if (a.company_id !== targetId && b.company_id === targetId) return 1;
+            return 0;
+        });
+
+        // Filtra duplicatas pelo nome (caso a empresa tenha um canal com mesmo nome da matriz, usa o da empresa)
+        const uniqueChannels = [];
+        const seenNames = new Set();
+        for (const item of sortedRows) {
+            if(!seenNames.has(item.name)){
+                seenNames.add(item.name);
+                uniqueChannels.push(item);
+            }
+        }
+
+        response.json(uniqueChannels);
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/products-list', async (request, response) => {
+    try {
+        const { companyId } = request.query;
+        const query = companyId
+            ? 'SELECT id, name, sku FROM products WHERE company_id = ? ORDER BY name ASC'
+            : 'SELECT id, name, sku FROM products ORDER BY name ASC';
+        const params = companyId ? [companyId] : [];
+        const [rows] = await pool.execute(query, params);
+        response.json(rows);
+    } catch (error) {
+        response.status(500).json({ error: error.message });
+    }
+});
+
+// =================================================================================
+// MÓDULO: DADOS MESTRES (EMPRESAS, PARCEIROS, GRUPOS)
 // =================================================================================
 
 app.get('/api/utils/cnpj/:cnpj', async (request, response) => {
     const cnpj = request.params.cnpj.replace(/\D/g, ''); 
     try {
         const resBrasil = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { timeout: 5000, httpsAgent });
-        return response.json({ taxId: cnpj, name: resBrasil.data.razao_social, tradeName: resBrasil.data.nome_fantasia || resBrasil.data.razao_social, taxRegime: resBrasil.data.opcao_pelo_simples ? 'SIMPLES' : 'LUCRO_PRESUMIDO' });
+        return response.json({ 
+            taxId: cnpj, 
+            name: resBrasil.data.razao_social, 
+            tradeName: resBrasil.data.nome_fantasia || resBrasil.data.razao_social, 
+            taxRegime: resBrasil.data.opcao_pelo_simples ? 'SIMPLES' : 'LUCRO_PRESUMIDO' 
+        });
     } catch (err) {
         try {
             const resReceita = await axios.get(`https://www.receitaws.com.br/v1/cnpj/${cnpj}`, { timeout: 8000, httpsAgent });
-            return response.json({ taxId: cnpj, name: resReceita.data.nome, tradeName: resReceita.data.fantasia || resReceita.data.nome, taxRegime: 'LUCRO_PRESUMIDO' });
-        } catch (err2) { return response.status(500).json({ message: 'Erro CNPJ' }); }
+            return response.json({ 
+                taxId: cnpj, 
+                name: resReceita.data.nome, 
+                tradeName: resReceita.data.fantasia || resReceita.data.nome, 
+                taxRegime: 'LUCRO_PRESUMIDO' 
+            });
+        } catch (err2) { 
+            return response.status(500).json({ message: 'Erro ao consultar CNPJ em ambas as APIs.' }); 
+        }
     }
 });
 
 app.get('/api/groups', async (request, response) => {
-    try { const [rows] = await pool.execute('SELECT * FROM company_groups ORDER BY name ASC'); response.json(rows); } 
-    catch (error) { response.status(500).json({ message: error.message }); }
+    try { const [rows] = await pool.execute('SELECT * FROM company_groups ORDER BY name ASC'); response.json(rows); } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
 app.post('/api/groups', async (request, response) => {
     const { name, description } = request.body;
-    try { const [result] = await pool.execute('INSERT INTO company_groups (name, description) VALUES (?, ?)', [name, description]); response.json({ id: result.insertId, success: true }); } 
-    catch (error) { response.status(500).json({ message: error.message }); }
+    try { const [result] = await pool.execute('INSERT INTO company_groups (name, description) VALUES (?, ?)', [name, description]); response.json({ id: result.insertId, success: true }); } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
 app.delete('/api/groups/:id', async (request, response) => {
@@ -85,8 +241,7 @@ app.delete('/api/groups/:id', async (request, response) => {
 });
 
 app.get('/api/companies', async (request, response) => {
-    try { const [rows] = await pool.execute(`SELECT c.*, g.name as group_name FROM companies c LEFT JOIN company_groups g ON c.group_id = g.id ORDER BY c.name ASC`); response.json(rows); } 
-    catch (error) { response.status(500).json({ message: error.message }); }
+    try { const [rows] = await pool.execute(`SELECT c.*, g.name as group_name FROM companies c LEFT JOIN company_groups g ON c.group_id = g.id ORDER BY c.name ASC`); response.json(rows); } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
 app.post('/api/companies', async (request, response) => {
@@ -100,8 +255,7 @@ app.post('/api/companies', async (request, response) => {
 
 app.put('/api/companies/:id', async (request, response) => {
     const { name, trade_name, tax_id, tax_regime, group_id } = request.body;
-    try { await pool.execute('UPDATE companies SET name = ?, trade_name = ?, tax_id = ?, tax_regime = ?, group_id = ? WHERE id = ?', [name, trade_name, tax_id, tax_regime, group_id || null, request.params.id]); response.json({ success: true }); } 
-    catch (error) { response.status(500).json({ message: error.message }); }
+    try { await pool.execute('UPDATE companies SET name = ?, trade_name = ?, tax_id = ?, tax_regime = ?, group_id = ? WHERE id = ?', [name, trade_name, tax_id, tax_regime, group_id || null, request.params.id]); response.json({ success: true }); } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
 app.delete('/api/companies/:id', async (request, response) => {
@@ -116,23 +270,24 @@ app.delete('/api/companies/:id', async (request, response) => {
 });
 
 app.get('/api/partners/:companyId', async (request, response) => {
-    try { const [rows] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name ASC', [request.params.companyId]); response.json(rows); } 
-    catch (error) { response.status(500).json({ error: error.message }); }
+    try { const [rows] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name ASC', [request.params.companyId]); response.json(rows); } catch (error) { response.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/partners', async (request, response) => {
     const { company_id, name, tax_id, type, phone, email } = request.body;
-    try { await pool.execute('INSERT INTO partners (company_id, name, tax_id, type, phone, email) VALUES (?, ?, ?, ?, ?, ?)', [company_id, name, tax_id, type, phone, email]); response.json({ success: true }); } 
-    catch (error) { response.status(500).json({ error: error.message }); }
+    try { await pool.execute('INSERT INTO partners (company_id, name, tax_id, type, phone, email) VALUES (?, ?, ?, ?, ?, ?)', [company_id, name, tax_id, type, phone, email]); response.json({ success: true }); } catch (error) { response.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/partners/:id', async (request, response) => {
+    try { await pool.execute('DELETE FROM partners WHERE id = ?', [request.params.id]); response.json({ success: true }); } catch (error) { response.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/categories', async (request, response) => {
-    try { const [rows] = await pool.execute('SELECT * FROM categories ORDER BY type, name'); response.json(rows); } 
-    catch (error) { response.status(500).json({ message: error.message }); }
+    try { const [rows] = await pool.execute('SELECT * FROM categories ORDER BY type, name'); response.json(rows); } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
 // =================================================================================
-// LANÇAMENTOS E RELATÓRIOS
+// MÓDULO: LANÇAMENTOS E RELATÓRIOS
 // =================================================================================
 
 app.get('/api/entries', async (request, response) => {
@@ -185,7 +340,7 @@ app.post('/api/entries', async (request, response) => {
             }
         }
         await connection.commit();
-        await logAction(userId || 0, userName || 'Admin', 'UPSERT_ENTRY', `Consolidou: ${data.periodStart}`);
+        await logAction(userId || 0, userName || 'Admin', 'UPSERT_ENTRY', `Consolidou mês: ${data.periodStart}`);
         response.json({ success: true, id: entryId });
     } catch (error) { await connection.rollback(); response.status(500).json({ message: error.message }); } finally { connection.release(); }
 });
@@ -195,6 +350,15 @@ app.get('/api/entries/history', async (request, response) => {
     try {
         const [rows] = await pool.execute(`SELECT id, period_start, (COALESCE(revenue_resale,0) + COALESCE(revenue_product,0) + COALESCE(revenue_service,0) + COALESCE(revenue_other,0)) as total_revenue, (COALESCE(tax_icms,0) + COALESCE(tax_pis,0) + COALESCE(tax_cofins,0) + COALESCE(tax_iss,0) + COALESCE(tax_irpj,0) + COALESCE(tax_csll,0)) as total_taxes, (COALESCE(purchases_total,0) + COALESCE(expenses_total,0)) as total_costs FROM monthly_entries WHERE company_id = ? ORDER BY period_start DESC`, [companyId]);
         response.json(rows);
+    } catch (error) { response.status(500).json({ message: error.message }); }
+});
+
+app.delete('/api/entries', async (request, response) => {
+    const { companyId, month } = request.query;
+    try {
+        await pool.execute('DELETE FROM entry_details WHERE entry_id IN (SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?)', [companyId, month]);
+        await pool.execute('DELETE FROM monthly_entries WHERE company_id = ? AND period_start = ?', [companyId, month]);
+        response.json({ success: true });
     } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
@@ -222,7 +386,14 @@ app.post('/api/report', async (request, response) => {
             summary.tax_cofins += amountOrZero(r.tax_cofins); summary.tax_iss += amountOrZero(r.tax_iss);
             summary.tax_irpj += amountOrZero(r.tax_irpj); summary.tax_csll += amountOrZero(r.tax_csll);
 
-            return { monthKey: r.period_start.substring(0, 7), totalRevenue: rev, totalTaxes: taxes, totalPurchases: amountOrZero(r.purchases_total), totalExpenses: amountOrZero(r.expenses_total), profit: rev - taxes - cost, tax_icms: amountOrZero(r.tax_icms), tax_pis: amountOrZero(r.tax_pis), tax_cofins: amountOrZero(r.tax_cofins), tax_iss: amountOrZero(r.tax_iss), tax_irpj_csll: amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll) };
+            return { 
+                monthKey: r.period_start.substring(0, 7), 
+                totalRevenue: rev, totalTaxes: taxes, totalPurchases: amountOrZero(r.purchases_total), 
+                totalExpenses: amountOrZero(r.expenses_total), profit: rev - taxes - cost, 
+                tax_icms: amountOrZero(r.tax_icms), tax_pis: amountOrZero(r.tax_pis), 
+                tax_cofins: amountOrZero(r.tax_cofins), tax_iss: amountOrZero(r.tax_iss), 
+                tax_irpj_csll: amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll) 
+            };
         });
         response.json({ months, summary, categories: catData });
     } catch (error) { response.status(500).json({ message: error.message }); }
@@ -241,7 +412,7 @@ app.get('/api/intelligence/:companyId/:year', async (request, response) => {
     const { companyId, year } = request.params;
     try {
         const [realized] = await pool.execute(`SELECT MONTH(period_start) as month, SUM(revenue_resale + revenue_product + revenue_service + revenue_other) as revenue, SUM(tax_icms + tax_iss + tax_pis + tax_cofins + tax_irpj + tax_csll) as taxes, SUM(purchases_total + expenses_total) as costs FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ? GROUP BY MONTH(period_start) ORDER BY month ASC`, [companyId, year]);
-        const [planned] = await pool.execute(`SELECT SUM(planned_amount) as goal FROM budget_goals WHERE company_id = ? AND year = ?`, [companyId, year]);
+        const [planned] = await pool.execute('SELECT SUM(planned_amount) as goal FROM budget_goals WHERE company_id = ? AND year = ?', [companyId, year]);
         const avgRev = realized.length > 0 ? (realized.reduce((acc, curr) => acc + Number(curr.revenue), 0) / realized.length) : 0;
         response.json({ realized, planned: planned[0]?.goal || 0, forecast: avgRev * 1.05 });
     } catch (error) { response.status(500).json({ error: error.message }); }
@@ -249,14 +420,12 @@ app.get('/api/intelligence/:companyId/:year', async (request, response) => {
 
 app.post('/api/intelligence/goals', async (request, response) => {
     const { companyId, year, plannedAmount } = request.body;
-    try { await pool.execute('INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?', [companyId, year, plannedAmount, plannedAmount]); response.json({ success: true }); } 
-    catch (error) { response.status(500).json({ error: error.message }); }
+    try { await pool.execute('INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?', [companyId, year, plannedAmount, plannedAmount]); response.json({ success: true }); } catch (error) { response.status(500).json({ error: error.message }); }
 });
 
 app.delete('/api/intelligence/goals', async (request, response) => {
     const { companyId, year } = request.query;
-    try { await pool.execute('DELETE FROM budget_goals WHERE company_id = ? AND year = ?', [companyId, year]); response.json({ success: true }); } 
-    catch (error) { response.status(500).json({ error: error.message }); }
+    try { await pool.execute('DELETE FROM budget_goals WHERE company_id = ? AND year = ?', [companyId, year]); response.json({ success: true }); } catch (error) { response.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/intelligence/projections', async (request, response) => {
@@ -268,132 +437,70 @@ app.get('/api/intelligence/projections', async (request, response) => {
     } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
-// =================================================================================
-// 5. DRE GERENCIAL (12 MESES - DATA FIX - MODO BLINDADO)
-// =================================================================================
-
 app.get('/api/reports/dre', async (request, response) => {
     const { companyId, year } = request.query;
     try {
-        const [rows] = await pool.execute(`SELECT * FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ? ORDER BY period_start ASC`, [companyId, year]);
+        const [rows] = await pool.execute('SELECT * FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ? ORDER BY period_start ASC', [companyId, year]);
         const dre = Array(12).fill(null).map((_, i) => ({ month: i + 1, grossRevenue: 0, deductions: 0, netRevenue: 0, variableCosts: 0, grossProfit: 0, expenses: 0, netResult: 0 }));
-        
         rows.forEach(r => {
-            // CORREÇÃO CRÍTICA DE DATA: Pega o mês direto da string (YYYY-MM-DD)
-            // substring(5, 7) pega o 'MM' (ex: 2024-09-01 -> '09')
-            // Subtrai 1 para virar índice do array (0-11)
             const monthStr = r.period_start.substring(5, 7); 
             const idx = parseInt(monthStr) - 1;
-
             if (idx >= 0 && idx < 12) {
                 const rev = amountOrZero(r.revenue_resale) + amountOrZero(r.revenue_product) + amountOrZero(r.revenue_service) + amountOrZero(r.revenue_rent) + amountOrZero(r.revenue_other);
                 const tax = amountOrZero(r.tax_icms) + amountOrZero(r.tax_pis) + amountOrZero(r.tax_cofins) + amountOrZero(r.tax_iss) + amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll);
-                
-                dre[idx].grossRevenue = rev; 
-                dre[idx].deductions = tax; 
-                dre[idx].netRevenue = rev - tax;
-                dre[idx].variableCosts = amountOrZero(r.purchases_total); 
-                dre[idx].expenses = amountOrZero(r.expenses_total);
-                dre[idx].grossProfit = dre[idx].netRevenue - dre[idx].variableCosts;
-                dre[idx].netResult = dre[idx].grossProfit - dre[idx].expenses;
+                dre[idx].grossRevenue = rev; dre[idx].deductions = tax; dre[idx].netRevenue = rev - tax;
+                dre[idx].variableCosts = amountOrZero(r.purchases_total); dre[idx].expenses = amountOrZero(r.expenses_total);
+                dre[idx].grossProfit = dre[idx].netRevenue - dre[idx].variableCosts; dre[idx].netResult = dre[idx].grossProfit - dre[idx].expenses;
             }
         });
         response.json(dre);
     } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
-// =================================================================================
-// 4. NOVA ROTA: DRE DETALHADA PARA EXPORTAÇÃO (ANALÍTICA)
-// =================================================================================
-
 app.get('/api/reports/dre/detailed', async (request, response) => {
     const { companyId, year } = request.query;
     try {
         if (!companyId || !year) return response.status(400).json({ message: "CompanyId e Year obrigatórios." });
-        
-        // 1. Totais Sintéticos
-        const [rows] = await pool.execute(`SELECT * FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ?`, [companyId, year]);
-        
-        // 2. Detalhes Analíticos (Categorias)
-        const [details] = await pool.execute(`
-            SELECT ed.amount, ed.type, c.name as category_name
-            FROM entry_details ed
-            JOIN monthly_entries me ON ed.entry_id = me.id
-            JOIN categories c ON ed.category_id = c.id
-            WHERE me.company_id = ? AND YEAR(me.period_start) = ?
-        `, [companyId, year]);
-
-        // Agrupamento Analítico
-        const analyticalExpenses = {};
-        const analyticalRevenues = {};
-
+        const [rows] = await pool.execute('SELECT * FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ?', [companyId, year]);
+        const [details] = await pool.execute(`SELECT ed.amount, ed.type, c.name as category_name FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id WHERE me.company_id = ? AND YEAR(me.period_start) = ?`, [companyId, year]);
+        const analyticalExpenses = {}; const analyticalRevenues = {};
         details.forEach(d => {
             const name = d.category_name || 'Não Classificado';
             const val = amountOrZero(d.amount);
             if (d.type === 'EXPENSE') analyticalExpenses[name] = (analyticalExpenses[name] || 0) + val;
             else analyticalRevenues[name] = (analyticalRevenues[name] || 0) + val;
         });
-
-        // Totais Anuais Sintéticos
         const totals = rows.reduce((acc, r) => {
             acc.grossRevenue += amountOrZero(r.revenue_resale) + amountOrZero(r.revenue_product) + amountOrZero(r.revenue_service) + amountOrZero(r.revenue_rent);
             acc.taxes += amountOrZero(r.tax_icms) + amountOrZero(r.tax_pis) + amountOrZero(r.tax_cofins) + amountOrZero(r.tax_iss) + amountOrZero(r.tax_irpj) + amountOrZero(r.tax_csll);
-            acc.costs += amountOrZero(r.purchases_total);
-            acc.expenses += amountOrZero(r.expenses_total); 
-            acc.otherRevenue += amountOrZero(r.revenue_other);
+            acc.costs += amountOrZero(r.purchases_total); acc.expenses += amountOrZero(r.expenses_total); acc.otherRevenue += amountOrZero(r.revenue_other);
             return acc;
         }, { grossRevenue: 0, taxes: 0, costs: 0, expenses: 0, otherRevenue: 0 });
-
-        // Montagem da Estrutura Detalhada
         const dre = [];
-        
         const totalGross = totals.grossRevenue + totals.otherRevenue;
         dre.push({ type: 'S', code: '1', desc: 'RECEITA OPERACIONAL BRUTA', value: totalGross });
         if (totals.grossRevenue > 0) dre.push({ type: 'A', code: '1.1', desc: 'Faturamento de Serviços/Vendas', value: totals.grossRevenue });
-        
-        Object.entries(analyticalRevenues).forEach(([name, val], i) => {
-            dre.push({ type: 'A', code: `1.2.${i+1}`, desc: name, value: val });
-        });
-
+        Object.entries(analyticalRevenues).forEach(([name, val], i) => { dre.push({ type: 'A', code: `1.2.${i+1}`, desc: name, value: val }); });
         dre.push({ type: 'S', code: '2', desc: '(-) DEDUÇÕES E IMPOSTOS', value: -totals.taxes });
-        
         const netRevenue = totalGross - totals.taxes;
         dre.push({ type: 'S', code: '3', desc: '(=) RECEITA OPERACIONAL LÍQUIDA', value: netRevenue });
-
         dre.push({ type: 'S', code: '4', desc: '(-) CUSTOS E INSUMOS', value: -totals.costs });
-
         const grossProfit = netRevenue - totals.costs;
         dre.push({ type: 'S', code: '5', desc: '(=) LUCRO BRUTO', value: grossProfit });
-
-        // Despesas: Tenta usar o detalhado, se não houver, usa o total lançado
         const sumAnalytical = Object.values(analyticalExpenses).reduce((a,b)=>a+b, 0);
         const totalOpExpenses = Math.max(totals.expenses, sumAnalytical); 
         const unclassified = Math.max(0, totalOpExpenses - sumAnalytical);
-
         dre.push({ type: 'S', code: '6', desc: '(+/-) DESPESAS OPERACIONAIS', value: -totalOpExpenses });
-        
-        Object.entries(analyticalExpenses).forEach(([name, val], i) => {
-            dre.push({ type: 'A', code: `6.${i+1}`, desc: name, value: -val });
-        });
-
-        if (unclassified > 0) {
-            dre.push({ type: 'A', code: '6.99', desc: 'Outras Despesas Gerais', value: -unclassified });
-        }
-
+        Object.entries(analyticalExpenses).forEach(([name, val], i) => { dre.push({ type: 'A', code: `6.${i+1}`, desc: name, value: -val }); });
+        if (unclassified > 0) { dre.push({ type: 'A', code: '6.99', desc: 'Outras Despesas Gerais', value: -unclassified }); }
         const netResult = grossProfit - totalOpExpenses;
         dre.push({ type: 'S', code: '7', desc: '(=) RESULTADO LÍQUIDO DO EXERCÍCIO', value: netResult });
-
         response.json(dre);
-
-    } catch (error) { 
-        response.status(500).json({ message: error.message }); 
-    }
+    } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
-
 app.get('/api/audit-logs', async (request, response) => {
-    try { const [rows] = await pool.execute("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100"); response.json(rows); } 
-    catch (error) { response.status(500).json({ error: error.message }); } 
+    try { const [rows] = await pool.execute("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100"); response.json(rows); } catch (error) { response.status(500).json({ error: error.message }); } 
 });
 
 app.post('/api/integration/test-questor', async (request, response) => {
@@ -415,4 +522,10 @@ app.post('/api/auth/login', async (request, response) => {
     } catch (error) { response.status(500).json({ message: error.message }); }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Vector Server On na Porta ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n==================================================`);
+    console.log(`🚀 VECTOR SERVER OPERACIONAL NA PORTA ${PORT}`);
+    console.log(`✅ Conectado ao banco: ${process.env.DB_NAME || 'financeiro'}`);
+    console.log(`✅ Módulo Pricing Ativado`);
+    console.log(`==================================================\n`);
+});
