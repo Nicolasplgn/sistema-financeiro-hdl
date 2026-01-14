@@ -54,44 +54,40 @@ class PricingService {
                 totalIndustrialCost += (netItemCost * item.quantity);
             }
 
-            // TAXAS DO CANAL (SAÍDA) - BASEADO NA PLANILHA
+            // TAXAS DO CANAL (SAÍDA)
             let icmsOut = 0, pisOut = 0, cofinsOut = 0;
 
             if (taxRegime === 'LUCRO_REAL') {
-                pisOut = parseFloat(channel.pis_out_percent);
-                cofinsOut = parseFloat(channel.cofins_out_percent);
-                icmsOut = parseFloat(channel.icms_out_percent);
+                pisOut = parseFloat(channel.pis_out_percent || 0);
+                cofinsOut = parseFloat(channel.cofins_out_percent || 0);
+                icmsOut = parseFloat(channel.icms_out_percent || 0);
             } else {
-                icmsOut = parseFloat(channel.icms_out_percent); // Simples/Presumido simplificado
+                icmsOut = parseFloat(channel.icms_out_percent || 0); 
             }
 
-            // Custos Operacionais (Mapeando campos extras da planilha)
-            // Se o campo não existir no banco ainda, assumimos 0 ou usamos campos genéricos
-            const commission = parseFloat(channel.commission_percent);
-            const marketing = parseFloat(channel.marketing_percent);
-            const fixedCost = parseFloat(channel.fixed_cost_allocation_percent);
-            const profit = parseFloat(channel.profit_margin_percent);
+            // Custos Operacionais & Markup
+            const commission = parseFloat(channel.commission_percent || 0);
+            const marketing = parseFloat(channel.marketing_percent || 0);
+            const fixedCost = parseFloat(channel.fixed_cost_allocation_percent || 0);
+            const profit = parseFloat(channel.profit_margin_percent || 0);
             
-            // Novos campos implícitos (Financeiro, Pro-labore, Salários)
-            // Como ainda não criamos colunas para eles, vamos somar no "Custo Fixo" temporariamente 
-            // ou assumir um valor padrão se for B2B PR 1
-            let extraOperational = 0;
-            if (channel.name.includes('B2B') && channel.name.includes('PR')) {
-                 // Valores aproximados da sua planilha para simulação
-                 extraOperational = 4.00 + 2.40 + 33.79; // Financeiro + Pro-labore + Salários
-            }
+            // NOVOS CAMPOS DE MARKUP (Financeiro e Administrativo)
+            const financialCost = parseFloat(channel.financial_cost_percent || 0);
+            const adminCost = parseFloat(channel.administrative_cost_percent || 0);
 
             const freightVal = parseFloat(channel.freight_value || 0);
             
             // Cálculo do Divisor
             const totalTaxPercent = icmsOut + pisOut + cofinsOut;
-            const totalOpPercent = commission + marketing + fixedCost + extraOperational;
+            // Somamos todos os custos operacionais (Comissão + Mkt + Fixo + Financeiro + Adm)
+            const totalOpPercent = commission + marketing + fixedCost + financialCost + adminCost;
+            
             const totalDeductions = (totalTaxPercent + totalOpPercent + profit) / 100;
             
             const divisor = 1 - totalDeductions;
             
             let finalPrice = 0;
-            if (divisor > 0.05) { // Proteção contra divisor zero ou muito baixo
+            if (divisor > 0.05) { 
                 finalPrice = (totalIndustrialCost + freightVal) / divisor;
             } else {
                 finalPrice = 0; // Margem estourada
@@ -111,7 +107,8 @@ class PricingService {
                     comissao: commission,
                     marketing: marketing,
                     custo_fixo: fixedCost,
-                    extras_operacionais: extraOperational, // Financeiro/Salários
+                    financeiro: financialCost,
+                    administrativo: adminCost,
                     margem_lucro: profit,
                     frete_valor: freightVal
                 },

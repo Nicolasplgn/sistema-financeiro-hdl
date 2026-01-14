@@ -8,16 +8,13 @@ const Companies = ({ apiBase, onSelectCompany }) => {
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // Controles de Modal
     const [isCompModalOpen, setIsCompModalOpen] = useState(false);
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
     const [searchingCnpj, setSearchingCnpj] = useState(false);
     
-    // Estados de Formulário
     const [formData, setFormData] = useState({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' });
     const [groupForm, setGroupForm] = useState({ name: '', description: '' });
 
-    // Busca dados iniciais
     const fetchAll = async () => {
         setLoading(true);
         try {
@@ -54,18 +51,17 @@ const Companies = ({ apiBase, onSelectCompany }) => {
         }
     };
 
-    // Salvar Empresa
     const handleSaveCompany = async (e) => {
         e.preventDefault();
+        const user = JSON.parse(localStorage.getItem('hdl_user'));
         try {
-            const payload = { ...formData, group_id: formData.group_id || null };
+            const payload = { ...formData, group_id: formData.group_id || null, userId: user?.id, userName: user?.full_name };
             if (formData.id) await axios.put(`${apiBase}/api/companies/${formData.id}`, payload);
             else await axios.post(`${apiBase}/api/companies`, payload);
             setIsCompModalOpen(false); fetchAll();
         } catch (error) { alert('Erro ao salvar empresa'); }
     };
 
-    // Salvar Grupo
     const handleSaveGroup = async (e) => {
         e.preventDefault();
         try {
@@ -74,9 +70,27 @@ const Companies = ({ apiBase, onSelectCompany }) => {
         } catch (error) { alert('Erro ao salvar grupo'); }
     };
 
+    // --- CORREÇÃO AQUI: PASSANDO USUÁRIO NA EXCLUSÃO ---
+    const handleDeleteCompany = async (companyId) => {
+        if (!confirm('Excluir empresa? Todos os dados financeiros vinculados serão apagados.')) return;
+        
+        const user = JSON.parse(localStorage.getItem('hdl_user'));
+        try {
+            await axios.delete(`${apiBase}/api/companies/${companyId}`, {
+                params: {
+                    userId: user?.id,
+                    userName: user?.full_name
+                }
+            });
+            fetchAll();
+        } catch (error) {
+            alert('Erro ao excluir empresa.');
+            console.error(error);
+        }
+    };
+
     return (
         <div className="p-10 max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
-            {/* Header da Página */}
             <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
                     <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3"><Building2 className="text-blue-600" size={32}/> Unidades & Grupos</h1>
@@ -89,7 +103,6 @@ const Companies = ({ apiBase, onSelectCompany }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-                {/* COLUNA 1: LISTA DE GRUPOS */}
                 <div className="lg:col-span-1 space-y-6">
                     <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest ml-2">Grupos Corporativos</h3>
                     <div className="space-y-4">
@@ -106,7 +119,6 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                     </div>
                 </div>
 
-                {/* COLUNA 2: LISTA DE EMPRESAS */}
                 <div className="lg:col-span-3 space-y-6">
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all"><Search className="text-slate-400"/><input type="text" placeholder="Buscar unidade por nome, CNPJ ou grupo..." className="w-full bg-transparent outline-none font-medium text-slate-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -116,7 +128,9 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                                     <div className="p-4 bg-slate-900 text-white rounded-2xl transform group-hover:rotate-6 transition-transform duration-500 shadow-lg"><Building2 size={24}/></div>
                                     <div className="flex gap-2">
                                         <button onClick={() => { setFormData(company); setIsCompModalOpen(true); }} className="p-2 text-slate-300 hover:text-blue-600 transition-colors hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
-                                        <button onClick={async () => { if(confirm('Excluir empresa?')) { await axios.delete(`${apiBase}/api/companies/${company.id}`); fetchAll(); } }} className="p-2 text-slate-300 hover:text-rose-500 transition-colors hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
+                                        
+                                        {/* AQUI ESTÁ A CHAMADA CORRIGIDA */}
+                                        <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
                                     </div>
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900 tracking-tighter italic mb-1">{company.trade_name || company.name}</h3>
@@ -136,7 +150,6 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                 </div>
             </div>
 
-            {/* MODAL CONFIGURAÇÃO EMPRESA */}
             {isCompModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <form onSubmit={handleSaveCompany} className="bg-white w-full max-w-lg rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
@@ -163,7 +176,6 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                 </div>
             )}
 
-            {/* MODAL NOVO GRUPO */}
             {isGroupModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <form onSubmit={handleSaveGroup} className="bg-white w-full max-w-md rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">

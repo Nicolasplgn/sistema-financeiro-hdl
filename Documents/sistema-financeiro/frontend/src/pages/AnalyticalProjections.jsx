@@ -10,6 +10,7 @@ import {
 } from 'chart.js';
 import { Chart } from 'react-chartjs-2';
 import { motion } from 'framer-motion';
+import api from '../services/api'; // <--- IMPORTAÇÃO CORRETA DA INSTÂNCIA AXIOS
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
@@ -47,8 +48,7 @@ const KpiCard = ({ title, value, sub, colorClass, icon: Icon }) => (
   </div>
 );
 
-const AnalyticalProjections = ({ globalCompanyId, apiBase }) => {
-  const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
+const AnalyticalProjections = ({ globalCompanyId }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   
@@ -65,15 +65,21 @@ const AnalyticalProjections = ({ globalCompanyId, apiBase }) => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${BASE_URL}/api/intelligence/projections?companyId=${globalCompanyId}`);
-        if (res.ok) {
-            const json = await res.json();
-            setData(json);
-        }
-      } catch (err) { console.error("Erro ao carregar projeções:", err); } finally { setLoading(false); }
+        // --- AQUI ESTÁ A CORREÇÃO: USANDO api.get ---
+        // O token JWT será injetado automaticamente pelo interceptor definido em services/api.js
+        const response = await api.get(`/api/intelligence/projections`, {
+            params: { companyId: globalCompanyId }
+        });
+        
+        setData(response.data);
+      } catch (err) { 
+          console.error("Erro ao carregar projeções:", err); 
+      } finally { 
+          setLoading(false); 
+      }
     };
     fetchData();
-  }, [globalCompanyId, BASE_URL]);
+  }, [globalCompanyId]);
 
   const applyAutoTrend = () => {
     if (!data || !data.dataset) return;

@@ -264,7 +264,7 @@ const IntelligenceHub = ({ companyId, apiBase, onNavigate }) => {
             </h3>
           </div>
           <div className="flex flex-col items-center justify-center py-6">
-             <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4">Estimativa Próximo Período</p>
+             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4">Estimativa Próximo Período</p>
              <div className="flex items-center gap-4 lg:gap-6 w-full justify-center">
                 <h4 className="text-4xl lg:text-5xl font-black font-mono italic text-emerald-400 tracking-tighter truncate max-w-full">{formatBRL(data.forecast)}</h4>
                 <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-400 animate-bounce shrink-0"><ArrowUpRight size={32} /></div>
