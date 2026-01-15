@@ -23,7 +23,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'vector_secret_key_secure_2026';
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 
-// AGENTE HTTPS (Para ignorar SSL em APIs externas se necessário)
+// AGENTE HTTPS
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 // POOL DE CONEXÃO AO BANCO DE DADOS
@@ -100,8 +100,6 @@ const initDb = async () => {
     try {
         const conn = await pool.getConnection();
         
-        // --- TABELAS BASE ---
-
         // 1. Logs de Auditoria
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS audit_logs (
@@ -114,7 +112,7 @@ const initDb = async () => {
             )
         `);
 
-        // 2. Usuários (Com suporte a Roles e Limites SaaS)
+        // 2. Usuários
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -128,7 +126,7 @@ const initDb = async () => {
             )
         `);
 
-        // 3. Empresas (Com Dono/Owner)
+        // 3. Empresas
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS companies (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -180,7 +178,7 @@ const initDb = async () => {
             )
         `);
 
-        // 7. Canais de Venda (Sales Channels - Fiscal e Markup)
+        // 7. Canais de Venda (Sales Channels)
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS sales_channels (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -196,7 +194,7 @@ const initDb = async () => {
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             )
         `);
-        
+
         // 8. Materiais
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS materials (
@@ -325,18 +323,18 @@ const initDb = async () => {
             )
         `);
 
-        // --- MIGRAÇÃO DE COLUNAS NOVAS (PLANILHAS) ---
+        // --- MIGRAÇÃO DE COLUNAS NOVAS ---
         await addColumnIfNotExists(conn, 'sales_channels', 'ipi_out_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'difal_out_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'ir_csll_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'default_rate_percent DECIMAL(5,2) DEFAULT 0.00'); // Inadimplência
-        await addColumnIfNotExists(conn, 'sales_channels', 'freight_percent DECIMAL(5,2) DEFAULT 0.00'); // Frete (%)
-        await addColumnIfNotExists(conn, 'sales_channels', 'freight_value DECIMAL(15,2) DEFAULT 0.00'); // Frete Valor (Legado)
-        await addColumnIfNotExists(conn, 'sales_channels', 'financial_cost_percent DECIMAL(5,2) DEFAULT 0.00'); // Custo Financeiro
-        await addColumnIfNotExists(conn, 'sales_channels', 'fixed_expenses_rate_percent DECIMAL(5,2) DEFAULT 0.00'); // Rateio Fixos
-        await addColumnIfNotExists(conn, 'sales_channels', 'payroll_rate_percent DECIMAL(5,2) DEFAULT 0.00'); // Rateio Folha
-        await addColumnIfNotExists(conn, 'sales_channels', 'administrative_cost_percent DECIMAL(5,2) DEFAULT 0.00'); // Rateio Geral
-
+        await addColumnIfNotExists(conn, 'sales_channels', 'default_rate_percent DECIMAL(5,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'freight_percent DECIMAL(5,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'freight_value DECIMAL(15,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'financial_cost_percent DECIMAL(5,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'fixed_expenses_rate_percent DECIMAL(5,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'payroll_rate_percent DECIMAL(5,2) DEFAULT 0.00');
+        await addColumnIfNotExists(conn, 'sales_channels', 'administrative_cost_percent DECIMAL(5,2) DEFAULT 0.00');
+        
         // Garante usuário Super Admin padrão
         await conn.execute(`
             INSERT IGNORE INTO users (id, full_name, email, password_hash, role) 
@@ -368,15 +366,9 @@ app.post('/api/auth/login', async (request, response) => {
         
         const user = u[0];
         
-        // Gera o Token JWT com os dados necessários
+        // Gera o Token JWT
         const token = jwt.sign(
-            { 
-                id: user.id, 
-                email: user.email, 
-                role: user.role, 
-                company_id: user.company_id,
-                max_companies: user.max_companies 
-            },
+            { id: user.id, email: user.email, role: user.role, company_id: user.company_id },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -418,7 +410,7 @@ app.get('/api/admin/users', async (req, res) => {
     }
 });
 
-// Criar Usuário (Cliente)
+// Criar Usuário
 app.post('/api/admin/users', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') {
         return res.status(403).json({ message: 'Sem permissão.' });
@@ -915,25 +907,12 @@ app.post('/api/entries', async (req, res) => {
     } finally { conn.release(); }
 });
 
+// --- ROTA DE HISTÓRICO CORRIGIDA PARA RETORNAR TUDO ---
 app.get('/api/entries/history', async (req, res) => {
     const { companyId } = req.query;
     try {
-        // Agora somamos explicitamente TODOS os campos para não dar erro de nulo ou falta de soma
         const query = `
-            SELECT id, period_start, 
-            (
-                COALESCE(revenue_resale,0) + COALESCE(revenue_product,0) + COALESCE(revenue_service,0) + 
-                COALESCE(revenue_rent,0) + COALESCE(revenue_other,0)
-            ) as total_revenue, 
-            (
-                COALESCE(tax_icms,0) + COALESCE(tax_difal,0) + COALESCE(tax_iss,0) + COALESCE(tax_pis,0) + 
-                COALESCE(tax_cofins,0) + COALESCE(tax_csll,0) + COALESCE(tax_irpj,0) + COALESCE(tax_additional_irpj,0) + 
-                COALESCE(tax_fust,0) + COALESCE(tax_funtell,0)
-            ) as total_taxes, 
-            (
-                COALESCE(purchases_total,0) + COALESCE(expenses_total,0)
-            ) as total_costs 
-            FROM monthly_entries 
+            SELECT * FROM monthly_entries 
             WHERE company_id = ? 
             ORDER BY period_start DESC
         `;
@@ -945,7 +924,7 @@ app.get('/api/entries/history', async (req, res) => {
 app.delete('/api/entries', async (req, res) => {
     try {
         await pool.execute('DELETE FROM monthly_entries WHERE company_id = ? AND period_start = ?', [req.query.companyId, req.query.month]);
-        res.json({success: true});
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
