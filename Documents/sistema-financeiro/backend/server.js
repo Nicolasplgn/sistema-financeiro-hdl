@@ -1010,6 +1010,7 @@ initDb().then(() => {
         console.log(`🚀 VECTOR SERVER OPERACIONAL NA PORTA ${PORT}`);
         console.log(`✅ Segurança JWT Ativada`);
         console.log(`✅ Banco de Dados Conectado`);
+        console.log(`Autoria de Nicolas Pereira Lucas Gonçalves`);
         console.log(`==================================================\n`);
     });
 });
