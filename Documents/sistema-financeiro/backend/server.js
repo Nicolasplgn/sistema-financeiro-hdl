@@ -5,6 +5,8 @@ const mysql = require('mysql2/promise');
 const axios = require('axios');
 const https = require('https');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const XLSX = require('xlsx');
 
 // IMPORTAÇÃO DOS SERVIÇOS
 // Se não tiver o arquivo questorService.js, comente a linha abaixo
@@ -25,6 +27,9 @@ app.use(express.json({ limit: '50mb' }));
 
 // AGENTE HTTPS
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+// CONFIGURAÇÃO DE UPLOAD (MULTER)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // POOL DE CONEXÃO AO BANCO DE DADOS
 const pool = mysql.createPool({
@@ -788,9 +793,11 @@ app.get('/api/companies', async (req, res) => {
 
 app.post('/api/companies', async (req, res) => { 
     const userId = req.user.id;
-    const userRole = req.user.role;
+    const userRole = req.user.role; // Pega a role do token JWT
+    
     try { 
-        // Verificar Limite (SaaS)
+        // Lógica de Limite (SaaS)
+        // Se for SUPER_ADMIN, ignora a verificação de limite
         if (userRole !== 'SUPER_ADMIN') {
             const [usage] = await pool.execute('SELECT COUNT(*) as count FROM companies WHERE owner_id = ?', [userId]);
             const [userLimit] = await pool.execute('SELECT max_companies FROM users WHERE id = ?', [userId]);
@@ -1003,6 +1010,130 @@ app.get('/api/audit-logs', async (req, res) => {
     try { const [r] = await pool.execute('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100'); res.json(r); } catch (e) { res.status(500).json(e); } 
 });
 
+// =================================================================================
+// ROTA DE IMPORTAÇÃO DE DRE (EXCEL)
+// =================================================================================
+app.post('/api/import/dre', authenticateToken, upload.single('file'), async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+        if (!req.file) throw new Error("Nenhum arquivo enviado.");
+
+        // Ler o arquivo (suporta Buffer do Multer)
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        
+        // Converte para JSON (Array de Arrays para facilitar a leitura posicional)
+        // header: 1 gera um array de arrays: [ ['Conta', 'Total', 'AV%', 'Jan', ...], ['Receita', ...], ... ]
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        // Mapeamento dos meses (Índices das colunas baseado no seu CSV)
+        // Jan é a coluna 3 (índice 3), Fev é 4, etc... (Considerando 0-based: Conta=0, Total=1, AV=2, Jan=3)
+        const monthsMap = {
+            3: '01', 4: '02', 5: '03', 6: '04', 7: '05', 8: '06',
+            9: '07', 10: '08', 11: '09', 12: '10', 13: '11', 14: '12'
+        };
+
+        // Objeto para armazenar os dados organizados por mês
+        // Formato: { '2025-01-01': { revenue: 0, taxes: 0, ... }, ... }
+        const entriesByMonth = {};
+        
+        // O ano base para a importação (Tenta pegar do nome do arquivo ou usa o ano atual)
+        // Se o arquivo chamar "DRE_2025.csv", pega 2025. Senão, usa ano corrente.
+        const yearMatch = req.file.originalname.match(/20\d{2}/);
+        const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
+
+        // Helper para limpar valor monetário (R$ 1.000,00 -> 1000.00)
+        const parseCurrency = (val) => {
+            if (typeof val === 'number') return val;
+            if (!val || val === '-') return 0;
+            // Remove "R$", espaços, pontos de milhar e troca vírgula decimal por ponto
+            return parseFloat(val.toString().replace(/[R$\s.]/g, '').replace(',', '.')) || 0;
+        };
+
+        // Itera sobre as linhas da planilha para extrair os dados
+        for (let i = 1; i < data.length; i++) { // Começa do 1 para pular o cabeçalho
+            const row = data[i];
+            const accountName = (row[0] || '').toString().toLowerCase(); // Nome da conta (ex: "(+) RECEITA BRUTA")
+
+            // Itera sobre as colunas de meses (3 a 14)
+            for (let colIndex = 3; colIndex <= 14; colIndex++) {
+                const month = monthsMap[colIndex];
+                const periodStart = `${year}-${month}-01`;
+                
+                // Inicializa o objeto do mês se não existir
+                if (!entriesByMonth[periodStart]) {
+                    entriesByMonth[periodStart] = { 
+                        revenue: 0, taxes: 0, purchases: 0, expenses: 0 
+                    };
+                }
+
+                const value = parseCurrency(row[colIndex]);
+
+                // Lógica de Mapeamento (De-Para)
+                if (accountName.includes('receita bruta')) {
+                    entriesByMonth[periodStart].revenue = value;
+                } 
+                else if (accountName.includes('impostos') || accountName.includes('deduções')) {
+                    entriesByMonth[periodStart].taxes = value;
+                }
+                else if (accountName.includes('custos variáveis') || accountName.includes('cmv')) {
+                    entriesByMonth[periodStart].purchases = value;
+                }
+                else if (accountName.includes('despesas operacionais')) {
+                    entriesByMonth[periodStart].expenses = value;
+                }
+            }
+        }
+
+        await conn.beginTransaction();
+
+        let count = 0;
+        // Salva no banco de dados
+        for (const [periodStart, values] of Object.entries(entriesByMonth)) {
+            // Ignora meses zerados (opcional, mas bom para evitar sujeira)
+            if (values.revenue === 0 && values.taxes === 0 && values.expenses === 0) continue;
+
+            const [existing] = await conn.execute(
+                'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',
+                [req.body.companyId, periodStart]
+            );
+
+            // Calcula período final (último dia do mês)
+            const [y, m] = periodStart.split('-');
+            const lastDay = new Date(y, m, 0).getDate();
+            const periodEnd = `${y}-${m}-${lastDay}`;
+
+            if (existing.length > 0) {
+                // UPDATE
+                await conn.execute(`
+                    UPDATE monthly_entries SET 
+                    revenue_product = ?, tax_icms = ?, purchases_total = ?, expenses_total = ?, notes = ?
+                    WHERE id = ?
+                `, [values.revenue, values.taxes, values.purchases, values.expenses, `Importado DRE ${year}`, existing[0].id]);
+            } else {
+                // INSERT
+                await conn.execute(`
+                    INSERT INTO monthly_entries 
+                    (company_id, period_start, period_end, revenue_product, tax_icms, purchases_total, expenses_total, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `, [req.body.companyId, periodStart, periodEnd, values.revenue, values.taxes, values.purchases, values.expenses, `Importado DRE ${year}`]);
+            }
+            count++;
+        }
+
+        await conn.commit();
+        await logAction(req.user.id, req.user.email, 'IMPORT_DRE', `Importou DRE Horizontal (${count} meses).`);
+        res.json({ success: true, message: `DRE processada! ${count} meses atualizados.` });
+
+    } catch (error) {
+        await conn.rollback();
+        console.error("Erro Importação DRE:", error);
+        res.status(500).json({ error: "Erro ao processar DRE. Verifique se o formato está correto (Horizontal)." });
+    } finally {
+        conn.release();
+    }
+});
 // Inicialização do Servidor
 initDb().then(() => {
     app.listen(PORT, '0.0.0.0', () => {

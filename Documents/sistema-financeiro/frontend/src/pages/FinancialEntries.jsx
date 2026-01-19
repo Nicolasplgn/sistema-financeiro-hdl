@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Save, CheckCircle, DollarSign, TrendingUp, 
   ArrowDownCircle, FileText, Calendar, Building2, Calculator, 
   Eraser, History, Trash2, Edit3, ChevronDown, ChevronUp, 
   Plus, X, Tag, Copy, ChevronLeft, ChevronRight, AlertCircle,
-  ArrowUpRight, ArrowDownRight, Info, ListPlus, FileSpreadsheet
+  ArrowUpRight, ArrowDownRight, Info, ListPlus, FileSpreadsheet,
+  UploadCloud, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -75,6 +76,7 @@ const InputSection = ({ title, icon: Icon, color, children, description }) => (
 const FinancialEntries = ({ companyId, apiBase }) => {
   const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
   const user = JSON.parse(localStorage.getItem('hdl_user'));
+  const fileInputRef = useRef(null);
 
   // ESTADOS PRINCIPAIS
   const [currentMonth, setCurrentMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
@@ -85,6 +87,9 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState(null);
   const [showCloneModal, setShowCloneModal] = useState(false);
+  
+  // NOVO ESTADO DE UPLOAD
+  const [isUploading, setIsUploading] = useState(false);
   
   // ESTADO DO NOVO ITEM ANALÍTICO
   const [newItem, setNewItem] = useState({ 
@@ -212,6 +217,44 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     }
   };
   
+  // UPLOAD DE EXCEL
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !companyId) return;
+
+    if (!confirm("Isso importará os dados da planilha e atualizará os meses correspondentes no sistema. Deseja continuar?")) {
+        e.target.value = null; 
+        return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('companyId', companyId);
+
+    try {
+        await axios.post(`${BASE_URL}/api/import/dre`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        alert("Importação concluída com sucesso! Os dados do BI foram atualizados.");
+        
+        // Recarrega histórico
+        const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
+        setHistory(resHist.data);
+        
+        // Força reload do mês atual
+        const [y, m] = currentMonth.split('-');
+        setCurrentMonth(`${y}-${m}`); 
+        
+    } catch (error) {
+        alert("Erro na importação. Verifique se a planilha segue o modelo padrão.");
+        console.error(error);
+    } finally {
+        setIsUploading(false);
+        e.target.value = null; 
+    }
+  };
+
   const handleDeleteEntry = async (date) => {
       if(!confirm("Deseja apagar este registro histórico?")) return;
       try {
@@ -237,6 +280,15 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   return (
     <div className="max-w-7xl mx-auto pb-20 px-6 animate-in fade-in duration-700">
       
+      {/* Input Oculto para Upload */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept=".xlsx, .xls, .csv" 
+        className="hidden" 
+      />
+
       {/* CABEÇALHO */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center py-10 gap-6">
         <div>
@@ -247,6 +299,17 @@ const FinancialEntries = ({ companyId, apiBase }) => {
         </div>
 
         <div className="flex items-center gap-3">
+           
+           {/* BOTÃO DE IMPORTAÇÃO */}
+           <button 
+             onClick={() => fileInputRef.current.click()} 
+             disabled={isUploading}
+             className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 uppercase tracking-widest active:scale-95"
+           >
+             {isUploading ? <Loader2 size={16} className="animate-spin"/> : <UploadCloud size={16}/>}
+             Importar DRE
+           </button>
+
            <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5">
               <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><ChevronLeft size={20}/></button>
               <div className="flex items-center px-4 gap-2 border-x border-slate-100">
@@ -255,6 +318,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
               </div>
               <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><ChevronRight size={20}/></button>
            </div>
+           
            <button onClick={() => setShowCloneModal(true)} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-2xl text-xs font-black hover:bg-slate-50 transition shadow-sm uppercase tracking-widest">
              <Copy size={16} className="text-amber-500"/> Clonar Mês
            </button>
@@ -262,7 +326,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       </header>
 
       {/* DASHBOARD DE RESULTADO DRE */}
-      <div className="relative mb-12"> {/* <--- CORREÇÃO AQUI (REMOVEU sticky E top-6) */}
+      <div className="relative mb-12">
         <motion.div layout className="bg-slate-900 text-white rounded-[2.5rem] shadow-2xl border border-white/5 overflow-hidden">
           <div className="flex flex-col lg:flex-row items-center justify-between px-10 py-8 gap-10">
             <div className="flex items-center gap-6">
@@ -403,9 +467,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             </thead>
             <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
               {history.map((item) => {
-                // CORREÇÃO: Somar as colunas individuais, pois o backend retorna SELECT *
-                
-                // 1. Somar todas as receitas
+                // CORREÇÃO: Somar as colunas individuais
                 const totalRev = 
                   Number(item.revenue_resale || 0) + 
                   Number(item.revenue_product || 0) + 
@@ -413,7 +475,6 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                   Number(item.revenue_rent || 0) + 
                   Number(item.revenue_other || 0);
 
-                // 2. Somar todos os impostos
                 const totalTax = 
                   Number(item.tax_icms || 0) + 
                   Number(item.tax_difal || 0) + 
@@ -426,10 +487,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                   Number(item.tax_fust || 0) + 
                   Number(item.tax_funtell || 0);
 
-                // 3. Somar custos e despesas
                 const totalCost = Number(item.purchases_total || 0) + Number(item.expenses_total || 0);
-                
-                // 4. Calcular Lucro
                 const itemProfit = totalRev - totalTax - totalCost;
 
                 return (

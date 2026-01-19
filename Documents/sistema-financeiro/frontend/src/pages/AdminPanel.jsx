@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   ShieldAlert, Users, Search, UserPlus, LogIn, Trash2, 
-  Activity, Database, LayoutDashboard, Lock, Edit3, X, Save
+  Activity, Database, LayoutDashboard, Lock, Edit3, X, Save, Infinity
 } from 'lucide-react';
 
 const AdminPanel = ({ apiBase, onImpersonate }) => {
@@ -48,7 +48,7 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
         await axios.put(`${BASE_URL}/api/admin/users/${editUser.id}`, {
             role: editUser.role,
             max_companies: editUser.max_companies,
-            password: editUser.password // Opcional
+            password: editUser.password 
         });
         setIsEditModalOpen(false);
         fetchUsers();
@@ -120,19 +120,27 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
                         </td>
                         <td className="p-6"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${u.role === 'SUPER_ADMIN' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span></td>
                         <td className="p-6 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                                <span className={`font-mono font-bold ${u.companies_used >= u.max_companies ? 'text-rose-600' : 'text-emerald-600'}`}>{u.companies_used}</span>
-                                <span className="text-slate-300">/</span>
-                                <span className="font-mono font-bold text-slate-900">{u.max_companies}</span>
-                            </div>
-                            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-                                <div className={`h-full ${u.companies_used >= u.max_companies ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${Math.min((u.companies_used/u.max_companies)*100, 100)}%`}}></div>
-                            </div>
+                            {u.role === 'SUPER_ADMIN' ? (
+                                <div className="flex items-center justify-center gap-2 text-emerald-600 font-black text-xs uppercase tracking-widest">
+                                    <Infinity size={18}/> Ilimitado
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <span className={`font-mono font-bold ${u.companies_used >= u.max_companies ? 'text-rose-600' : 'text-emerald-600'}`}>{u.companies_used}</span>
+                                        <span className="text-slate-300">/</span>
+                                        <span className="font-mono font-bold text-slate-900">{u.max_companies}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden max-w-[100px] mx-auto">
+                                        <div className={`h-full ${u.companies_used >= u.max_companies ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${Math.min((u.companies_used/u.max_companies)*100, 100)}%`}}></div>
+                                    </div>
+                                </>
+                            )}
                         </td>
                         <td className="p-6 text-xs font-medium text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
                         <td className="p-6 text-right">
                             <div className="flex justify-end gap-2">
-                                <button onClick={() => { setEditUser(u); setIsEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 transition bg-slate-50 rounded-lg hover:bg-blue-50"><Edit3 size={16}/></button>
+                                <button onClick={() => { setEditUser(u); setIsEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 transition bg-slate-50 rounded-lg hover:bg-blue-50" title="Editar Licenças"><Edit3 size={16}/></button>
                                 {u.role !== 'SUPER_ADMIN' && (
                                     <button onClick={() => handleImpersonate(u)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 transition hover:-translate-y-1"><LogIn size={14}/> Entrar</button>
                                 )}
@@ -165,7 +173,7 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
                         </div>
                         <div>
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Licenças (Unidades)</label>
-                            <input type="number" min="1" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.max_companies} onChange={e => setNewUser({...newUser, max_companies: e.target.value})}/>
+                            <input type="number" min="1" disabled={newUser.role === 'SUPER_ADMIN'} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none disabled:opacity-50" value={newUser.role === 'SUPER_ADMIN' ? 9999 : newUser.max_companies} onChange={e => setNewUser({...newUser, max_companies: e.target.value})}/>
                         </div>
                     </div>
                     <button type="submit" className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl mt-4 hover:bg-black transition shadow-lg uppercase text-xs tracking-widest">Cadastrar Usuário</button>
@@ -174,20 +182,43 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
         </div>
       )}
 
-      {/* MODAL EDITAR */}
+      {/* MODAL EDITAR (Onde você libera ou tira licenças) */}
       {isEditModalOpen && editUser && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
             <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl relative">
                 <button onClick={() => setIsEditModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                <h3 className="text-2xl font-black text-slate-900 mb-2">Editar Cliente</h3>
-                <p className="text-slate-500 font-bold text-sm mb-6">{editUser.full_name}</p>
-                <form onSubmit={handleUpdateUser} className="space-y-4">
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Limite de Unidades (Licenças)</label>
-                        <input type="number" min="1" className="w-full p-4 bg-slate-50 border-none rounded-xl font-black text-2xl text-slate-900 outline-none text-center" value={editUser.max_companies} onChange={e => setEditUser({...editUser, max_companies: e.target.value})}/>
+                <div className="mb-6 text-center">
+                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 font-black text-2xl uppercase shadow-lg">
+                        {editUser.full_name.charAt(0)}
                     </div>
-                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nova Senha (Opcional)</label><input type="text" placeholder="Deixe em branco para manter" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" onChange={e => setEditUser({...editUser, password: e.target.value})}/></div>
-                    <button type="submit" className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl mt-4 hover:bg-blue-700 transition shadow-lg uppercase text-xs tracking-widest flex items-center justify-center gap-2"><Save size={16}/> Salvar Alterações</button>
+                    <h3 className="text-xl font-black text-slate-900">{editUser.full_name}</h3>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{editUser.role}</p>
+                </div>
+                
+                <form onSubmit={handleUpdateUser} className="space-y-6">
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 text-center">Limite de Licenças (Unidades)</label>
+                        <div className="flex items-center justify-center gap-4">
+                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: Math.max(1, parseInt(editUser.max_companies) - 1)})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center font-black text-xl transition">-</button>
+                            <input 
+                                type="number" 
+                                min="1" 
+                                className="w-24 h-16 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-3xl text-slate-900 outline-none text-center focus:border-blue-500 transition" 
+                                value={editUser.max_companies} 
+                                onChange={e => setEditUser({...editUser, max_companies: e.target.value})}
+                            />
+                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: parseInt(editUser.max_companies) + 1})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 flex items-center justify-center font-black text-xl transition">+</button>
+                        </div>
+                    </div>
+                    
+                    <div className="pt-4 border-t border-slate-100">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Alterar Senha (Opcional)</label>
+                        <input type="text" placeholder="Nova senha..." className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition" onChange={e => setEditUser({...editUser, password: e.target.value})}/>
+                    </div>
+
+                    <button type="submit" className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-xl uppercase text-xs tracking-widest flex items-center justify-center gap-2">
+                        <Save size={16}/> Salvar Alterações
+                    </button>
                 </form>
             </div>
         </div>
