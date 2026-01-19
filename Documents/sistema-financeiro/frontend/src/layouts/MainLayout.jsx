@@ -1,156 +1,147 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import api from '../services/api';
 import { 
-  LayoutDashboard, 
-  Building2, 
-  LogOut, 
-  Menu, 
-  UserCircle,
-  FileText
+  LayoutDashboard, DollarSign, Building2, ChevronLeft, ChevronRight, 
+  LogOut, Users, ShieldAlert, FileText, Wallet, CloudLightning, 
+  Tag, Box, Activity, BrainCircuit, Layers
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-const MainLayout = () => {
-  const { user, logout, selectedCompany, setSelectedCompany } = useAuth();
+const MainLayout = ({ user, onLogout, selectedEntity, onSelectEntity, companies, groups }) => {
+  const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const [companies, setCompanies] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [loadingCompanies, setLoadingCompanies] = useState(true);
-
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      try {
-        const response = await api.get('/companies');
-        const list = Array.isArray(response.data) ? response.data : [];
-        setCompanies(list);
-        
-        if (list.length > 0 && !selectedCompany) {
-            setSelectedCompany(list[0]); 
-        }
-      } catch (error) {
-        console.error("Erro ao buscar empresas:", error);
-        setCompanies([]);
-      } finally {
-        setLoadingCompanies(false);
-      }
-    };
-
-    fetchCompanies();
-  }, [selectedCompany, setSelectedCompany]);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
 
   const menuItems = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { label: 'Lançamentos', icon: FileText, path: '/entries' },
-    ...(user?.role === 'admin' ? [{ label: 'Gerenciar Empresas', icon: Building2, path: '/companies' }] : []),
+    { section: 'Inteligência', items: [
+      { id: '/dashboard', icon: LayoutDashboard, label: 'Visão Geral' },
+      { id: '/pricing', icon: Tag, label: 'Precificação', color: 'text-amber-500' },
+      { id: '/bi', icon: BrainCircuit, label: 'Monitor BI', color: 'text-emerald-500' },
+      { id: '/projections', icon: Activity, label: 'Projeções', color: 'text-blue-400' },
+    ]},
+    { section: 'Financeiro', items: [
+      { id: '/entries', icon: DollarSign, label: 'Lançamentos' },
+      { id: '/costs', icon: Wallet, label: 'Gestão de Custos', color: 'text-rose-500' },
+      { id: '/dre', icon: FileText, label: 'DRE Gerencial' },
+    ]},
+    { section: 'Gestão', items: [
+      { id: '/companies', icon: Building2, label: 'Estrutura Corp.' },
+      { id: '/partners', icon: Users, label: 'Parceiros' },
+      { id: '/questor', icon: CloudLightning, label: 'Integração', color: 'text-purple-500' },
+    ]}
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="flex min-h-screen bg-[#F8FAFC] font-sans text-slate-900 selection:bg-blue-100">
       
       {/* SIDEBAR */}
-      <aside 
-        className={`${sidebarOpen ? 'w-64' : 'w-20'} 
-        bg-slate-900 text-white transition-all duration-300 flex flex-col shadow-2xl z-20`}
-      >
-        <div className="h-16 flex items-center justify-center border-b border-slate-700">
-          {sidebarOpen ? (
-             <h1 className="text-xl font-bold tracking-wider text-blue-400">HDL GESTÃO</h1>
-          ) : (
-             <h1 className="text-xl font-bold text-blue-400">HDL</h1>
-          )}
+      <aside className={`${collapsed ? 'w-24' : 'w-72'} bg-slate-900 h-screen fixed transition-all duration-500 z-50 shadow-2xl flex flex-col`}>
+        {/* Logo Area */}
+        <div className="h-24 flex items-center justify-center border-b border-white/5 relative">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-900/50">V</div>
+            {!collapsed && (
+              <div>
+                <h1 className="text-white font-black text-lg tracking-tight">VECTOR</h1>
+                <p className="text-[9px] text-blue-400 font-bold uppercase tracking-[0.3em]">Enterprise</p>
+              </div>
+            )}
+          </div>
+          <button 
+            onClick={() => setCollapsed(!collapsed)}
+            className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-lg hover:scale-110 transition border-2 border-slate-900"
+          >
+            {collapsed ? <ChevronRight size={12}/> : <ChevronLeft size={12}/>}
+          </button>
         </div>
 
-        <nav className="flex-1 py-6 space-y-2 px-3">
-          {menuItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 group
-                  ${isActive 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' 
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                  }`}
-              >
-                <item.icon className={`w-6 h-6 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
-                {sidebarOpen && <span className="ml-3 font-medium text-sm">{item.label}</span>}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-slate-800 bg-slate-900/50">
-            <div className={`flex items-center ${!sidebarOpen && 'justify-center'}`}>
-                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-blue-400">
-                    <UserCircle size={24} />
-                </div>
-                {sidebarOpen && (
-                    <div className="ml-3 overflow-hidden">
-                        <p className="text-sm font-semibold text-white truncate">{user?.name || 'Usuário'}</p>
-                        <p className="text-xs text-slate-400 capitalize">{user?.role || 'Visitante'}</p>
-                    </div>
-                )}
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto py-6 px-4 space-y-6 custom-scrollbar">
+          {menuItems.map((group, idx) => (
+            <div key={idx}>
+              {!collapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">{group.section}</p>}
+              <div className="space-y-1">
+                {group.items.map(item => {
+                  const active = location.pathname === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => navigate(item.id)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group
+                        ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-white/5 hover:text-white'}
+                        ${collapsed ? 'justify-center' : ''}
+                      `}
+                    >
+                      <item.icon size={20} className={`${active ? 'text-white' : item.color || 'text-slate-400'} transition-colors`} />
+                      {!collapsed && <span className="text-sm font-bold tracking-tight">{item.label}</span>}
+                      {active && !collapsed && <motion.div layoutId="active-pill" className="ml-auto w-1.5 h-1.5 bg-white rounded-full" />}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <button 
-                onClick={handleLogout}
-                className="mt-4 w-full flex items-center justify-center p-2 rounded-lg bg-slate-800 text-red-400 hover:bg-red-600 hover:text-white transition-colors text-xs font-bold uppercase tracking-wide"
-            >
-                {sidebarOpen ? 'Sair' : <LogOut size={16}/>}
-            </button>
+          ))}
+        </div>
+
+        {/* User Footer */}
+        <div className="p-4 border-t border-white/5 bg-black/20">
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-700 to-slate-600 flex items-center justify-center text-white font-black shadow-inner">
+              {user?.full_name?.charAt(0)}
+            </div>
+            {!collapsed && (
+              <div className="flex-1 overflow-hidden">
+                <p className="text-sm font-bold text-white truncate">{user?.full_name?.split(' ')[0]}</p>
+                <p className="text-[9px] text-slate-400 uppercase tracking-wider">{user?.role}</p>
+              </div>
+            )}
+            {!collapsed && (
+              <button onClick={onLogout} className="text-rose-400 hover:bg-rose-500/10 p-2 rounded-lg transition"><LogOut size={18}/></button>
+            )}
+          </div>
         </div>
       </aside>
 
-      {/* ÁREA PRINCIPAL */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      {/* MAIN CONTENT */}
+      <div className={`flex-1 transition-all duration-500 ${collapsed ? 'ml-24' : 'ml-72'}`}>
         
-        {/* HEADER SUPERIOR */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-500 hover:text-blue-600 transition-colors">
-            <Menu className="w-6 h-6" />
-          </button>
+        {/* Topbar Glass */}
+        <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-40 px-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+             {/* Breadcrumbs or Page Title logic here */}
+             <h2 className="text-xl font-black text-slate-800 tracking-tight italic uppercase">
+                {menuItems.flatMap(g => g.items).find(i => i.id === location.pathname)?.label || 'Dashboard'}
+             </h2>
+          </div>
 
-          <div className="flex items-center space-x-4">
-            <span className="text-xs font-semibold text-slate-400 uppercase hidden sm:block">Empresa:</span>
-            
-            {/* SELETOR DE EMPRESA CORRIGIDO (Apenas 1 seta) */}
-            <div className="relative">
-                <select 
-                    value={selectedCompany?.id || ''}
-                    onChange={(e) => {
-                        const comp = companies.find(c => c.id === Number(e.target.value));
-                        setSelectedCompany(comp);
-                    }}
-                    disabled={loadingCompanies || companies.length === 0}
-                    className="bg-slate-100 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg font-bold text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
-                >
-                    {loadingCompanies ? (
-                        <option>Carregando...</option>
-                    ) : companies.length === 0 ? (
-                        <option>Nenhuma empresa</option>
-                    ) : (
-                        companies.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                        ))
-                    )}
-                </select>
-                {/* A seta extra foi removida daqui */}
+          <div className="flex items-center gap-4">
+            {/* Entity Selector */}
+            <div className="relative group">
+                <div className="flex items-center bg-slate-100 border border-slate-200 rounded-2xl p-1 pr-4 transition-all focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+                    <div className="p-2 bg-white rounded-xl shadow-sm mr-3 text-blue-600">
+                        {selectedEntity.type === 'group' ? <Layers size={18}/> : <Building2 size={18}/>}
+                    </div>
+                    <select 
+                        className="bg-transparent border-none outline-none text-xs font-black text-slate-700 uppercase tracking-widest min-w-[200px] cursor-pointer"
+                        value={selectedEntity.id ? `${selectedEntity.type}:${selectedEntity.id}` : ''}
+                        onChange={(e) => onSelectEntity(e.target.value)}
+                    >
+                        <option value="">Selecione a Unidade</option>
+                        <optgroup label="EMPRESAS">
+                            {companies.map(c => <option key={c.id} value={`company:${c.id}`}>{c.trade_name || c.name}</option>)}
+                        </optgroup>
+                        <optgroup label="GRUPOS">
+                            {groups.map(g => <option key={g.id} value={`group:${g.id}`}>{g.name}</option>)}
+                        </optgroup>
+                    </select>
+                </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-6">
+        <div className="p-8">
             <Outlet />
-        </main>
-
+        </div>
       </div>
     </div>
   );

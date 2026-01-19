@@ -262,7 +262,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       </header>
 
       {/* DASHBOARD DE RESULTADO DRE */}
-      <div className="sticky top-6 z-50 mb-12">
+      <div className="relative mb-12"> {/* <--- CORREÇÃO AQUI (REMOVEU sticky E top-6) */}
         <motion.div layout className="bg-slate-900 text-white rounded-[2.5rem] shadow-2xl border border-white/5 overflow-hidden">
           <div className="flex flex-col lg:flex-row items-center justify-between px-10 py-8 gap-10">
             <div className="flex items-center gap-6">
@@ -403,10 +403,33 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             </thead>
             <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
               {history.map((item) => {
-                // CORREÇÃO CRÍTICA AQUI: Usar Number() explicitamente para evitar NaN e garantir que venha número do banco
-                const totalRev = Number(item.total_revenue) || 0;
-                const totalTax = Number(item.total_taxes) || 0;
-                const totalCost = Number(item.total_costs) || 0;
+                // CORREÇÃO: Somar as colunas individuais, pois o backend retorna SELECT *
+                
+                // 1. Somar todas as receitas
+                const totalRev = 
+                  Number(item.revenue_resale || 0) + 
+                  Number(item.revenue_product || 0) + 
+                  Number(item.revenue_service || 0) + 
+                  Number(item.revenue_rent || 0) + 
+                  Number(item.revenue_other || 0);
+
+                // 2. Somar todos os impostos
+                const totalTax = 
+                  Number(item.tax_icms || 0) + 
+                  Number(item.tax_difal || 0) + 
+                  Number(item.tax_iss || 0) + 
+                  Number(item.tax_pis || 0) + 
+                  Number(item.tax_cofins || 0) + 
+                  Number(item.tax_csll || 0) + 
+                  Number(item.tax_irpj || 0) + 
+                  Number(item.tax_additional_irpj || 0) + 
+                  Number(item.tax_fust || 0) + 
+                  Number(item.tax_funtell || 0);
+
+                // 3. Somar custos e despesas
+                const totalCost = Number(item.purchases_total || 0) + Number(item.expenses_total || 0);
+                
+                // 4. Calcular Lucro
                 const itemProfit = totalRev - totalTax - totalCost;
 
                 return (
