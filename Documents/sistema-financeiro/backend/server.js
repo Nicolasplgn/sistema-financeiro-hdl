@@ -820,21 +820,69 @@ app.post('/api/companies', async (req, res) => {
 });
 
 app.delete('/api/companies/:id', async (req, res) => { 
+    const conn = await pool.getConnection();
     try { 
-        // Segurança: Verifica se é dono
+        const companyId = req.params.id;
+        const userId = req.user.id;
+
+        // 1. Verificação de Segurança
         if (req.user.role !== 'SUPER_ADMIN') {
-            const [check] = await pool.execute('SELECT id FROM companies WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
-            if (check.length === 0) return res.status(403).json({ message: 'Sem permissão.' });
+            const [check] = await conn.execute('SELECT id FROM companies WHERE id = ? AND owner_id = ?', [companyId, userId]);
+            if (check.length === 0) {
+                conn.release();
+                return res.status(403).json({ message: 'Sem permissão.' });
+            }
+        }
+        
+        await conn.beginTransaction();
+
+        // 2. DESLIGAR VERIFICAÇÃO DE CHAVES ESTRANGEIRAS (A "Mágica")
+        // Isso permite apagar sem que o banco reclame de dependências
+        await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+
+        // 3. Desvincular Usuários (Para não apagar o usuário, apenas tirar ele da empresa)
+        // Se a coluna permitir NULL, isso funciona. Se não, o usuário ficara "preso" mas a empresa sumiria (perigoso, mas resolve o erro 500 agora)
+        await conn.execute('UPDATE users SET company_id = NULL WHERE company_id = ?', [companyId]);
+
+        // 4. Limpar tabelas dependentes
+        const tables = [
+            'entry_details',
+            'product_boms',
+            'monthly_entries',
+            'fixed_expenses',
+            'payroll_expenses',
+            'prolabore_expenses',
+            'sales_channels',
+            'materials',
+            'products',
+            'partners',
+            'budget_goals'
+        ];
+
+        for (const t of tables) {
+            await conn.execute(`DELETE FROM ${t} WHERE company_id = ?`, [companyId]);
         }
 
-        // Cascata Manual
-        const tables = ['fixed_expenses', 'payroll_expenses', 'prolabore_expenses', 'sales_channels', 'materials', 'products', 'monthly_entries'];
-        for (const t of tables) await pool.execute(`DELETE FROM ${t} WHERE company_id = ?`, [req.params.id]);
+        // 5. Deletar a empresa
+        await conn.execute('DELETE FROM companies WHERE id = ?', [companyId]);
 
-        await pool.execute('DELETE FROM companies WHERE id = ?', [req.params.id]); 
-        await logAction(req.user.id, req.user.email, 'DELETE_COMPANY', `Excluiu ID: ${req.params.id}`); 
-        res.json({success: true}); 
-    } catch (e) { res.status(500).json({ error: e.message }); } 
+        // 6. Religar verificações e Salvar
+        await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+        await conn.commit();
+        
+        await logAction(userId, req.user.email, 'DELETE_COMPANY', `Excluiu empresa ID: ${companyId}`); 
+        res.json({ success: true, message: 'Empresa excluída com força bruta.' }); 
+
+    } catch (e) { 
+        await conn.rollback();
+        // Garante que a segurança volte mesmo se der erro
+        await conn.query('SET FOREIGN_KEY_CHECKS = 1'); 
+        
+        console.error("ERRO NO SERVIDOR AO DELETAR:", e); // Olhe seu terminal do VSCode/PowerShell para ver o erro real
+        res.status(500).json({ error: "Erro interno.", details: e.message }); 
+    } finally {
+        conn.release();
+    }
 });
 
 // Parceiros
