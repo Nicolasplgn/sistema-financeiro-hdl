@@ -5,7 +5,7 @@ import {
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
   RotateCcw, BarChart3, Layers, FileSpreadsheet, MessageCircle,
   Users, ShoppingBag, Trophy, Medal, Target, Activity, Receipt, FileCode,
-  CalendarRange // Novo ícone
+  CalendarRange
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -94,6 +94,17 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
   const printRef = useRef();
 
   const formatCurrency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  // Função auxiliar para cores dinâmicas
+  const getCategoryColor = (type, index) => {
+    if (type === 'REVENUE') {
+        const greens = ['#10B981', '#059669', '#34D399', '#3B82F6', '#2563EB'];
+        return greens[index % greens.length];
+    } else {
+        const reds = ['#EF4444', '#DC2626', '#F59E0B', '#D97706', '#EC4899'];
+        return reds[index % reds.length];
+    }
+  };
 
   // FUNÇÃO PARA SETAR ANO ATUAL
   const handleSetCurrentYear = () => {
@@ -364,13 +375,26 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
                  <div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><PieChart className="text-blue-600" size={20}/> Categorias</h3><button onClick={() => openTable('CATEGORIES', 'Detalhamento por Categoria')} className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 transition-all"><TableIcon size={20}/></button></div>
                  
                  {/* CORREÇÃO VISUAL DO GRÁFICO DE CATEGORIAS */}
-                 <div className="h-80 flex items-center justify-center relative">
+                <div className="h-80 flex items-center justify-center relative">
                     {categories.length > 0 ? (
                       <>
-                        <Doughnut data={{ labels: categories.map(c => c.name), datasets: [{ data: categories.map(c => c.total), backgroundColor: ['#0F172A', '#2563EB', '#10B981', '#F59E0B', '#8B5CF6'], borderWidth: 0 }] }} options={{ cutout: '85%', plugins: { legend: { display: false } } }} />
+                        <Doughnut 
+                            data={{ 
+                                labels: categories.map(c => `${c.name} (${c.type === 'REVENUE' ? '+' : '-'})`), 
+                                datasets: [{ 
+                                    data: categories.map(c => c.total), 
+                                    backgroundColor: categories.map((c, i) => getCategoryColor(c.type, i)), 
+                                    borderWidth: 0 
+                                }] 
+                            }} 
+                            options={{ cutout: '75%', plugins: { legend: { display: false } } }} 
+                        />
+                        
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Gasto Total</span>
-                            <span className="text-2xl lg:text-3xl font-black text-slate-900 italic tracking-tighter px-4 truncate w-full">{formatCurrency(categories.reduce((a,b)=>a+Number(b.total),0))}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Movimentado</span>
+                            <span className="text-2xl lg:text-3xl font-black text-slate-900 italic tracking-tighter px-4 truncate w-full">
+                                {formatCurrency(categories.reduce((a,b)=>a+Number(b.total),0))}
+                            </span>
                         </div>
                       </>
                     ) : (

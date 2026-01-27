@@ -819,6 +819,44 @@ app.post('/api/companies', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); } 
 });
 
+// ATUALIZAR EMPRESA (PUT)
+app.put('/api/companies/:id', async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+        const companyId = req.params.id;
+        const { name, trade_name, tax_id, tax_regime, group_id } = req.body;
+
+        // 1. Verificação de Segurança (Só o dono ou Super Admin pode editar)
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const [check] = await conn.execute('SELECT id FROM companies WHERE id = ? AND owner_id = ?', [companyId, req.user.id]);
+            if (check.length === 0) {
+                return res.status(403).json({ message: 'Sem permissão para editar esta empresa.' });
+            }
+        }
+
+        // 2. Executa a Atualização
+        await conn.execute(
+            `UPDATE companies SET 
+                name = ?, 
+                trade_name = ?, 
+                tax_id = ?, 
+                tax_regime = ?, 
+                group_id = ? 
+            WHERE id = ?`,
+            [name, trade_name, tax_id, tax_regime, group_id || null, companyId]
+        );
+
+        await logAction(req.user.id, req.user.email, 'UPDATE_COMPANY', `Atualizou dados da empresa ID: ${companyId}`);
+        res.json({ success: true });
+
+    } catch (e) {
+        console.error("Erro ao atualizar empresa:", e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        conn.release();
+    }
+});
+
 // DELETE COMPANY (FORÇA BRUTA - FK OFF - CORRIGIDO HIERARQUIA)
 app.delete('/api/companies/:id', async (req, res) => { 
     const conn = await pool.getConnection();
@@ -965,6 +1003,86 @@ app.post('/api/entries', async (req, res) => {
     } finally { conn.release(); }
 });
 
+// ROTA DE CLONAGEM DE MÊS
+app.post('/api/entries/clone', authenticateToken, async (req, res) => {
+    const { companyId, sourceMonth, targetMonth } = req.body;
+    const conn = await pool.getConnection();
+
+    try {
+        console.log(`[CLONE] Iniciando clonagem de ${sourceMonth} para ${targetMonth} (Empresa: ${companyId})`);
+
+        // 1. Busca os dados do mês de origem
+        const [source] = await conn.execute(
+            'SELECT * FROM monthly_entries WHERE company_id = ? AND period_start = ?', 
+            [companyId, sourceMonth + '-01']
+        );
+
+        if (source.length === 0) {
+            console.log("[CLONE] Origem não encontrada");
+            return res.status(404).json({ error: 'Mês de origem não possui dados lançados.' });
+        }
+        
+        const originEntry = source[0];
+
+        // 2. Verifica se o destino já existe
+        const [targetCheck] = await conn.execute(
+            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', 
+            [companyId, targetMonth + '-01']
+        );
+
+        if (targetCheck.length > 0) {
+            console.log("[CLONE] Destino já existe");
+            return res.status(400).json({ error: 'Mês de destino já possui lançamentos. Exclua o mês de destino antes de clonar.' });
+        }
+
+        await conn.beginTransaction();
+
+        // 3. Cria o novo lançamento (cabeçalho)
+        const [y, m] = targetMonth.split('-');
+        const lastDay = new Date(y, m, 0).getDate();
+        const periodEnd = `${y}-${m}-${lastDay}`;
+
+        const [result] = await conn.execute(`
+            INSERT INTO monthly_entries (
+                company_id, period_start, period_end, 
+                revenue_resale, revenue_product, revenue_service, revenue_rent, revenue_other,
+                tax_icms, tax_difal, tax_iss, tax_pis, tax_cofins, tax_csll, tax_irpj, tax_additional_irpj, tax_fust, tax_funtell,
+                purchases_total, expenses_total, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            companyId, targetMonth + '-01', periodEnd,
+            originEntry.revenue_resale, originEntry.revenue_product, originEntry.revenue_service, originEntry.revenue_rent, originEntry.revenue_other,
+            originEntry.tax_icms, originEntry.tax_difal, originEntry.tax_iss, originEntry.tax_pis, originEntry.tax_cofins, originEntry.tax_csll, originEntry.tax_irpj, originEntry.tax_additional_irpj, originEntry.tax_fust, originEntry.tax_funtell,
+            originEntry.purchases_total, originEntry.expenses_total, `Clonado de ${sourceMonth}`
+        ]);
+
+        const newEntryId = result.insertId;
+
+        // 4. Copia os detalhes (entry_details)
+        const [details] = await conn.execute('SELECT * FROM entry_details WHERE entry_id = ?', [originEntry.id]);
+        
+        for (const det of details) {
+            await conn.execute(`
+                INSERT INTO entry_details (entry_id, partner_id, category_id, type, amount, description)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [newEntryId, det.partner_id, det.category_id, det.type, det.amount, det.description]);
+        }
+
+        await conn.commit();
+        await logAction(req.user.id, req.user.email, 'CLONE_MONTH', `Clonou ${sourceMonth} para ${targetMonth}`);
+        console.log("[CLONE] Sucesso!");
+        
+        res.json({ success: true });
+
+    } catch (error) {
+        await conn.rollback();
+        console.error("[CLONE] Erro:", error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        conn.release();
+    }
+});
+
 // --- ROTA DE HISTÓRICO CORRIGIDA PARA RETORNAR TUDO ---
 app.get('/api/entries/history', async (req, res) => {
     const { companyId } = req.query;
@@ -988,21 +1106,21 @@ app.delete('/api/entries', async (req, res) => {
 
 app.post('/api/report', async (req, res) => { 
     try { 
-        // Garante que companyIds seja um array válido
         const companyIds = Array.isArray(req.body.companyIds) && req.body.companyIds.length > 0 
             ? req.body.companyIds 
             : [req.body.companyId || 0];
 
-        // SQL Otimizado com COALESCE para evitar NULL
+        // 1. Dados Mensais (Gráfico de Evolução)
         const query = `
             SELECT 
                 DATE_FORMAT(period_start, '%Y-%m') as month_key,
                 SUM(COALESCE(revenue_resale,0) + COALESCE(revenue_product,0) + COALESCE(revenue_service,0) + COALESCE(revenue_rent,0) + COALESCE(revenue_other,0)) as total_revenue,
-                SUM(COALESCE(tax_icms,0) + COALESCE(tax_difal,0)) as total_icms,
-                SUM(COALESCE(tax_pis,0)) as total_pis,
-                SUM(COALESCE(tax_cofins,0)) as total_cofins,
-                SUM(COALESCE(tax_iss,0)) as total_iss,
-                SUM(COALESCE(tax_irpj,0) + COALESCE(tax_additional_irpj,0) + COALESCE(tax_csll,0)) as total_ir_csll,
+                SUM(COALESCE(tax_icms,0) + COALESCE(tax_difal,0) + COALESCE(tax_pis,0) + COALESCE(tax_cofins,0) + COALESCE(tax_iss,0) + COALESCE(tax_irpj,0) + COALESCE(tax_additional_irpj,0) + COALESCE(tax_csll,0) + COALESCE(tax_fust,0) + COALESCE(tax_funtell,0)) as total_taxes,
+                SUM(COALESCE(tax_icms,0)) as tax_icms,
+                SUM(COALESCE(tax_pis,0)) as tax_pis,
+                SUM(COALESCE(tax_cofins,0)) as tax_cofins,
+                SUM(COALESCE(tax_iss,0)) as tax_iss,
+                SUM(COALESCE(tax_irpj,0) + COALESCE(tax_csll,0)) as tax_irpj_csll,
                 SUM(COALESCE(purchases_total,0)) as total_purchases,
                 SUM(COALESCE(expenses_total,0)) as total_expenses
             FROM monthly_entries 
@@ -1014,48 +1132,41 @@ app.post('/api/report', async (req, res) => {
 
         const [rows] = await pool.execute(query, [req.body.startDate, req.body.endDate]); 
 
-        const months = rows.map(row => {
-            const rev = Number(row.total_revenue);
-            const taxes = Number(row.total_icms) + Number(row.total_pis) + Number(row.total_cofins) + Number(row.total_iss) + Number(row.total_ir_csll);
-            const costs = Number(row.total_purchases) + Number(row.total_expenses);
-            
-            return { 
-                monthKey: row.month_key, 
-                totalRevenue: rev, 
-                totalTaxes: taxes,
-                tax_icms: Number(row.total_icms),
-                tax_pis: Number(row.total_pis),
-                tax_cofins: Number(row.total_cofins),
-                tax_iss: Number(row.total_iss),
-                tax_irpj_csll: Number(row.total_ir_csll),
-                totalPurchases: Number(row.total_purchases), 
-                totalExpenses: Number(row.total_expenses), 
-                profit: rev - taxes - costs 
-            };
-        });
+        const months = rows.map(row => ({ 
+            monthKey: row.month_key, 
+            totalRevenue: Number(row.total_revenue), 
+            totalTaxes: Number(row.total_taxes),
+            tax_icms: Number(row.tax_icms),
+            tax_pis: Number(row.tax_pis),
+            tax_cofins: Number(row.tax_cofins),
+            tax_iss: Number(row.tax_iss),
+            tax_irpj_csll: Number(row.tax_irpj_csll),
+            totalPurchases: Number(row.total_purchases), 
+            totalExpenses: Number(row.total_expenses), 
+            profit: Number(row.total_revenue) - Number(row.total_taxes) - Number(row.total_purchases) - Number(row.total_expenses)
+        }));
         
-        // Sumarização total
         const summary = months.reduce((acc, curr) => ({
             totalRevenue: acc.totalRevenue + curr.totalRevenue,
             totalProfit: acc.totalProfit + curr.profit,
             totalTaxes: acc.totalTaxes + curr.totalTaxes,
-            totalCosts: acc.totalCosts + curr.totalPurchases + curr.totalExpenses,
-            // Detalhado para o gráfico de pizza
-            tax_icms: acc.tax_icms + curr.tax_icms,
-            tax_pis: acc.tax_pis + curr.tax_pis,
-            tax_cofins: acc.tax_cofins + curr.tax_cofins,
-            tax_iss: acc.tax_iss + curr.tax_iss,
-            tax_irpj: acc.tax_irpj + curr.tax_irpj_csll,
-            tax_csll: 0 // Já somado no irpj para simplificar visualização ou pode separar se quiser
-        }), { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0, tax_icms: 0, tax_pis: 0, tax_cofins: 0, tax_iss: 0, tax_irpj: 0 });
+            totalCosts: acc.totalCosts + curr.totalPurchases + curr.totalExpenses
+        }), { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0 });
 
-        // Busca categorias (sem alteração)
-        const [c] = await pool.execute(
-            `SELECT c.name, SUM(ed.amount) as total FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id WHERE me.company_id IN (${companyIds.join(',')}) AND me.period_start >= ? AND me.period_start <= ? AND ed.type = 'EXPENSE' GROUP BY c.name`, 
+        // 2. Dados Analíticos (Gráfico de Categorias) - AGORA TRAZ TUDO (REVENUE E EXPENSE)
+        const [categories] = await pool.execute(
+            `SELECT c.name, ed.type, SUM(ed.amount) as total 
+             FROM entry_details ed 
+             JOIN monthly_entries me ON ed.entry_id = me.id 
+             JOIN categories c ON ed.category_id = c.id 
+             WHERE me.company_id IN (${companyIds.join(',')}) 
+             AND me.period_start >= ? AND me.period_start <= ? 
+             GROUP BY c.name, ed.type
+             ORDER BY total DESC`, 
             [req.body.startDate, req.body.endDate]
         ); 
         
-        res.json({ months, summary, categories: c }); 
+        res.json({ months, summary, categories }); 
 
     } catch (e) { 
         console.error("Erro Report:", e);
@@ -1063,19 +1174,100 @@ app.post('/api/report', async (req, res) => {
     } 
 });
 
+// ROTA DE INTELIGÊNCIA COM FORECAST REAL (REGRESSÃO LINEAR)
 app.get('/api/intelligence/:companyId/:year', async (req, res) => { 
     try { 
-        const [r] = await pool.execute(
-            'SELECT MONTH(period_start) as month, SUM(revenue_resale + revenue_product + revenue_service + revenue_other) as revenue, SUM(purchases_total + expenses_total) as costs, SUM(tax_icms + tax_iss + tax_pis + tax_cofins + tax_irpj + tax_csll) as taxes FROM monthly_entries WHERE company_id = ? AND YEAR(period_start) = ? GROUP BY MONTH(period_start)', 
-            [req.params.companyId, req.params.year]
+        const { companyId, year } = req.params;
+
+        // 1. Busca os dados realizados agrupados por mês
+        const [realized] = await pool.execute(
+            `SELECT MONTH(period_start) as month, 
+             SUM(revenue_resale + revenue_product + revenue_service + revenue_other) as revenue, 
+             SUM(purchases_total + expenses_total) as costs, 
+             SUM(tax_icms + tax_iss + tax_pis + tax_cofins + tax_irpj + tax_csll) as taxes 
+             FROM monthly_entries 
+             WHERE company_id = ? AND YEAR(period_start) = ? 
+             GROUP BY MONTH(period_start)
+             ORDER BY month ASC`, 
+            [companyId, year]
         ); 
-        const [p] = await pool.execute('SELECT planned_amount as goal FROM budget_goals WHERE company_id = ? AND year = ?', [req.params.companyId, req.params.year]); 
-        res.json({realized: r, planned: p[0]?.goal || 0, forecast: 0}); 
-    } catch (e) { res.status(500).json({ error: e.message }); } 
+
+        // 2. Busca a Meta
+        const [p] = await pool.execute(
+            'SELECT planned_amount as goal FROM budget_goals WHERE company_id = ? AND year = ?', 
+            [companyId, year]
+        ); 
+
+        // 3. Algoritmo de Forecast (Regressão Linear Simples)
+        let forecast = 0;
+        const n = realized.length;
+
+        if (n >= 2) {
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            
+            realized.forEach((row, index) => {
+                const x = index + 1; // Mês 1, 2, 3... (sequencial na amostra)
+                const y = Number(row.revenue);
+                
+                sumX += x;
+                sumY += y;
+                sumXY += x * y;
+                sumXX += x * x;
+            });
+
+            // Fórmulas da Regressão Linear (y = mx + b)
+            const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+            
+            // Projeta o próximo mês (n + 1)
+            forecast = (slope * (n + 1)) + intercept;
+        } else if (n === 1) {
+            // Se só tiver 1 mês, a previsão é igual ao realizado (média simples)
+            forecast = Number(realized[0].revenue);
+        }
+
+        // Garante que não dê negativo (se a tendência for de queda brusca)
+        forecast = Math.max(0, forecast);
+
+        res.json({
+            realized, 
+            planned: p[0]?.goal || 0, 
+            forecast: forecast 
+        }); 
+
+    } catch (e) { 
+        console.error("Erro Intelligence:", e);
+        res.status(500).json({ error: e.message }); 
+    } 
 });
 
-app.post('/api/intelligence/goals', async (req, res) => { 
-    try { await pool.execute('INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?', [req.body.companyId, req.body.year, req.body.plannedAmount, req.body.plannedAmount]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } 
+// 1. Criar ou Atualizar Meta (POST)
+app.post('/api/intelligence/goals', authenticateToken, async (req, res) => { 
+    try { 
+        const { companyId, year, plannedAmount } = req.body;
+        // O comando ON DUPLICATE KEY UPDATE garante que se já existir, ele atualiza
+        await pool.execute(
+            'INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?', 
+            [companyId, year, plannedAmount, plannedAmount]
+        ); 
+        res.json({ success: true }); 
+    } catch (e) { 
+        res.status(500).json({ error: e.message }); 
+    } 
+});
+
+// 2. EXCLUIR META (A QUE ESTAVA FALTANDO - Erro 404)
+app.delete('/api/intelligence/goals', authenticateToken, async (req, res) => {
+    try {
+        const { companyId, year } = req.query; // Recebe via parâmetros da URL
+        await pool.execute(
+            'DELETE FROM budget_goals WHERE company_id = ? AND year = ?',
+            [companyId, year]
+        );
+        res.json({ success: true, message: 'Meta removida com sucesso.' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.get('/api/intelligence/projections', async (req, res) => { 
@@ -1105,130 +1297,226 @@ app.get('/api/audit-logs', async (req, res) => {
 });
 
 // =================================================================================
+// ROTA: DRE DETALHADA PARA EXPORTAÇÃO (EXCEL)
+// =================================================================================
+app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
+    try {
+        const { companyId, year } = req.query;
+
+        // 1. Busca todos os detalhes analíticos do ano agrupados por categoria
+        const [details] = await pool.execute(`
+            SELECT 
+                c.name as category_name,
+                ed.type,
+                SUM(ed.amount) as total_value
+            FROM entry_details ed
+            JOIN monthly_entries me ON ed.entry_id = me.id
+            JOIN categories c ON ed.category_id = c.id
+            WHERE me.company_id = ? AND YEAR(me.period_start) = ?
+            GROUP BY c.name, ed.type
+            ORDER BY ed.type DESC, total_value DESC
+        `, [companyId, year]);
+
+        // 2. Busca os impostos totais do ano (campos fixos da tabela principal)
+        const [taxTotals] = await pool.execute(`
+            SELECT 
+                SUM(tax_icms + tax_difal + tax_iss + tax_pis + tax_cofins + tax_csll + tax_irpj + tax_additional_irpj + tax_fust + tax_funtell) as total_taxes
+            FROM monthly_entries
+            WHERE company_id = ? AND YEAR(period_start) = ?
+        `, [companyId, year]);
+
+        // 3. Formata os dados para o padrão que o Frontend (DRE.jsx) espera
+        const reportRows = [];
+
+        // Adicionar Receitas
+        reportRows.push({ type: 'S', code: '1', desc: 'RECEITA OPERACIONAL BRUTA', value: 0 });
+        let totalRevenue = 0;
+        details.filter(d => d.type === 'REVENUE').forEach(d => {
+            reportRows.push({ type: 'I', code: '1.1', desc: d.category_name, value: Number(d.total_value) });
+            totalRevenue += Number(d.total_value);
+        });
+        reportRows[0].value = totalRevenue;
+
+        // Adicionar Deduções (Impostos)
+        const totalTaxes = Number(taxTotals[0].total_taxes || 0);
+        reportRows.push({ type: 'S', code: '2', desc: '(-) DEDUÇÕES E IMPOSTOS', value: totalTaxes * -1 });
+
+        // Receita Líquida
+        reportRows.push({ type: 'S', code: '3', desc: '(=) RECEITA LÍQUIDA', value: totalRevenue - totalTaxes });
+
+        // Adicionar Despesas / Custos
+        reportRows.push({ type: 'S', code: '4', desc: '(-) CUSTOS E DESPESAS OPERACIONAIS', value: 0 });
+        let totalExpenses = 0;
+        details.filter(d => d.type === 'EXPENSE').forEach(d => {
+            reportRows.push({ type: 'I', code: '4.1', desc: d.category_name, value: Number(d.total_value) * -1 });
+            totalExpenses += Number(d.total_value);
+        });
+        reportRows[3].value = totalExpenses * -1;
+
+        // Resultado Final
+        reportRows.push({ type: 'S', code: '5', desc: '(=) RESULTADO LÍQUIDO DO EXERCÍCIO', value: (totalRevenue - totalTaxes - totalExpenses) });
+
+        res.json(reportRows);
+
+    } catch (e) {
+        console.error("Erro ao gerar DRE detalhada:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// =================================================================================
 // ROTA DE IMPORTAÇÃO DE DRE (EXCEL)
 // =================================================================================
+// ROTA DE IMPORTAÇÃO DE DRE (COM GERAÇÃO AUTOMÁTICA DE CATEGORIAS)
 app.post('/api/import/dre', authenticateToken, upload.single('file'), async (req, res) => {
     const conn = await pool.getConnection();
     try {
         if (!req.file) throw new Error("Nenhum arquivo enviado.");
 
-        // Ler o arquivo (suporta Buffer do Multer)
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
         
-        // Converte para JSON (Array de Arrays para facilitar a leitura posicional)
-        // header: 1 gera um array de arrays: [ ['Conta', 'Total', 'AV%', 'Jan', ...], ['Receita', ...], ... ]
-        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-        // Mapeamento dos meses (Índices das colunas baseado no seu CSV)
-        // Jan é a coluna 3 (índice 3), Fev é 4, etc... (Considerando 0-based: Conta=0, Total=1, AV=2, Jan=3)
-        const monthsMap = {
-            3: '01', 4: '02', 5: '03', 6: '04', 7: '05', 8: '06',
-            9: '07', 10: '08', 11: '09', 12: '10', 13: '11', 14: '12'
-        };
-
-        // Objeto para armazenar os dados organizados por mês
-        // Formato: { '2025-01-01': { revenue: 0, taxes: 0, ... }, ... }
-        const entriesByMonth = {};
-        
-        // O ano base para a importação (Tenta pegar do nome do arquivo ou usa o ano atual)
-        // Se o arquivo chamar "DRE_2025.csv", pega 2025. Senão, usa ano corrente.
+        // Mapeamento de Meses (Colunas)
+        const monthsMap = { 3: '01', 4: '02', 5: '03', 6: '04', 7: '05', 8: '06', 9: '07', 10: '08', 11: '09', 12: '10', 13: '11', 14: '12' };
         const yearMatch = req.file.originalname.match(/20\d{2}/);
         const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
 
-        // Helper para limpar valor monetário (R$ 1.000,00 -> 1000.00)
-        const parseCurrency = (val) => {
-            if (typeof val === 'number') return val;
-            if (!val || val === '-') return 0;
-            // Remove "R$", espaços, pontos de milhar e troca vírgula decimal por ponto
-            return parseFloat(val.toString().replace(/[R$\s.]/g, '').replace(',', '.')) || 0;
-        };
+        // 1. Garante que as categorias existem no banco
+        const categoriesMap = {};
+        const catsToCreate = [
+            { name: 'Receita Bruta (Importada)', type: 'REVENUE' },
+            { name: 'Impostos e Deduções', type: 'EXPENSE' },
+            { name: 'Custos Variáveis', type: 'EXPENSE' },
+            { name: 'Despesas Operacionais', type: 'EXPENSE' }
+        ];
 
-        // Itera sobre as linhas da planilha para extrair os dados
-        for (let i = 1; i < data.length; i++) { // Começa do 1 para pular o cabeçalho
-            const row = data[i];
-            const accountName = (row[0] || '').toString().toLowerCase(); // Nome da conta (ex: "(+) RECEITA BRUTA")
-
-            // Itera sobre as colunas de meses (3 a 14)
-            for (let colIndex = 3; colIndex <= 14; colIndex++) {
-                const month = monthsMap[colIndex];
-                const periodStart = `${year}-${month}-01`;
-                
-                // Inicializa o objeto do mês se não existir
-                if (!entriesByMonth[periodStart]) {
-                    entriesByMonth[periodStart] = { 
-                        revenue: 0, taxes: 0, purchases: 0, expenses: 0 
-                    };
-                }
-
-                const value = parseCurrency(row[colIndex]);
-
-                // Lógica de Mapeamento (De-Para)
-                if (accountName.includes('receita bruta')) {
-                    entriesByMonth[periodStart].revenue = value;
-                } 
-                else if (accountName.includes('impostos') || accountName.includes('deduções')) {
-                    entriesByMonth[periodStart].taxes = value;
-                }
-                else if (accountName.includes('custos variáveis') || accountName.includes('cmv')) {
-                    entriesByMonth[periodStart].purchases = value;
-                }
-                else if (accountName.includes('despesas operacionais')) {
-                    entriesByMonth[periodStart].expenses = value;
-                }
-            }
+        for (const cat of catsToCreate) {
+            // Tenta achar ou criar
+            await conn.execute('INSERT IGNORE INTO categories (name, type) VALUES (?, ?)', [cat.name, cat.type]);
+            const [rows] = await conn.execute('SELECT id FROM categories WHERE name = ?', [cat.name]);
+            categoriesMap[cat.name] = rows[0].id;
         }
 
         await conn.beginTransaction();
 
         let count = 0;
-        // Salva no banco de dados
-        for (const [periodStart, values] of Object.entries(entriesByMonth)) {
-            // Ignora meses zerados (opcional, mas bom para evitar sujeira)
-            if (values.revenue === 0 && values.taxes === 0 && values.expenses === 0) continue;
+        // Estrutura temporária para agrupar por mês
+        const monthData = {}; 
 
-            const [existing] = await conn.execute(
-                'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',
-                [req.body.companyId, periodStart]
-            );
+        // 2. Lê a planilha e agrupa
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const accountName = (row[0] || '').toString().toLowerCase();
 
-            // Calcula período final (último dia do mês)
+            // Identifica qual categoria essa linha representa
+            let catId = null;
+            let type = null;
+            let dbColumn = null; // Qual coluna do monthly_entries atualizar
+
+            if (accountName.includes('receita bruta') || accountName.includes('faturamento')) {
+                catId = categoriesMap['Receita Bruta (Importada)'];
+                type = 'REVENUE';
+                dbColumn = 'revenue_product';
+            } else if (accountName.includes('impostos') || accountName.includes('deduções')) {
+                catId = categoriesMap['Impostos e Deduções'];
+                type = 'EXPENSE';
+                dbColumn = 'tax_icms'; // Simplificação: joga tudo em ICMS se for genérico, ou soma
+            } else if (accountName.includes('custos variáveis') || accountName.includes('cmv')) {
+                catId = categoriesMap['Custos Variáveis'];
+                type = 'EXPENSE';
+                dbColumn = 'purchases_total';
+            } else if (accountName.includes('despesas operacionais')) {
+                catId = categoriesMap['Despesas Operacionais'];
+                type = 'EXPENSE';
+                dbColumn = 'expenses_total';
+            }
+
+            if (!catId) continue; // Pula linhas de cabeçalho ou totais irrelevantes
+
+            // Processa colunas de meses
+            for (let colIndex = 3; colIndex <= 14; colIndex++) {
+                const month = monthsMap[colIndex];
+                if (!month) continue;
+                
+                const periodStart = `${year}-${month}-01`;
+                const value = parseFloat((row[colIndex] || '').toString().replace(/[R$\s.]/g, '').replace(',', '.')) || 0;
+
+                if (value === 0) continue;
+
+                if (!monthData[periodStart]) {
+                    monthData[periodStart] = { 
+                        revenue: 0, taxes: 0, purchases: 0, expenses: 0, 
+                        details: [] 
+                    };
+                }
+
+                // Soma nos totais
+                if (dbColumn === 'revenue_product') monthData[periodStart].revenue += value;
+                if (dbColumn === 'tax_icms') monthData[periodStart].taxes += value;
+                if (dbColumn === 'purchases_total') monthData[periodStart].purchases += value;
+                if (dbColumn === 'expenses_total') monthData[periodStart].expenses += value;
+
+                // Adiciona ao detalhe para o gráfico de categorias
+                monthData[periodStart].details.push({
+                    category_id: catId,
+                    type: type,
+                    amount: value,
+                    description: row[0] // Usa o nome da conta original da planilha (ex: "(-) Custos Variáveis")
+                });
+            }
+        }
+
+        // 3. Salva no Banco (Lançamento Mensal + Detalhes)
+        for (const [periodStart, data] of Object.entries(monthData)) {
+            // Upsert do Mês
+            const [existing] = await conn.execute('SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', [req.body.companyId, periodStart]);
+            let entryId;
+            
+            // Calcula último dia
             const [y, m] = periodStart.split('-');
             const lastDay = new Date(y, m, 0).getDate();
             const periodEnd = `${y}-${m}-${lastDay}`;
 
             if (existing.length > 0) {
-                // UPDATE
+                entryId = existing[0].id;
                 await conn.execute(`
                     UPDATE monthly_entries SET 
                     revenue_product = ?, tax_icms = ?, purchases_total = ?, expenses_total = ?, notes = ?
                     WHERE id = ?
-                `, [values.revenue, values.taxes, values.purchases, values.expenses, `Importado DRE ${year}`, existing[0].id]);
+                `, [data.revenue, data.taxes, data.purchases, data.expenses, `Importado Auto ${year}`, entryId]);
+                
+                // Limpa detalhes antigos para não duplicar na reimportação
+                await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
             } else {
-                // INSERT
-                await conn.execute(`
+                const [ins] = await conn.execute(`
                     INSERT INTO monthly_entries 
                     (company_id, period_start, period_end, revenue_product, tax_icms, purchases_total, expenses_total, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `, [req.body.companyId, periodStart, periodEnd, values.revenue, values.taxes, values.purchases, values.expenses, `Importado DRE ${year}`]);
+                `, [req.body.companyId, periodStart, periodEnd, data.revenue, data.taxes, data.purchases, data.expenses, `Importado Auto ${year}`]);
+                entryId = ins.insertId;
+            }
+
+            // Insere os Detalhes (Isso que alimenta o gráfico de categorias!)
+            for (const detail of data.details) {
+                await conn.execute(`
+                    INSERT INTO entry_details (entry_id, category_id, type, amount, description)
+                    VALUES (?, ?, ?, ?, ?)
+                `, [entryId, detail.category_id, detail.type, detail.amount, detail.description]);
             }
             count++;
         }
 
         await conn.commit();
-        await logAction(req.user.id, req.user.email, 'IMPORT_DRE', `Importou DRE Horizontal (${count} meses).`);
-        res.json({ success: true, message: `DRE processada! ${count} meses atualizados.` });
+        res.json({ success: true, message: `Processado com sucesso! ${count} meses gerados com detalhes.` });
 
     } catch (error) {
         await conn.rollback();
-        console.error("Erro Importação DRE:", error);
-        res.status(500).json({ error: "Erro ao processar DRE. Verifique se o formato está correto (Horizontal)." });
+        console.error(error);
+        res.status(500).json({ error: "Erro na importação: " + error.message });
     } finally {
         conn.release();
     }
 });
-
 // ROTA DE RANKING DE PARCEIROS (CURVA ABC)
 app.get('/api/reports/partners-ranking', async (req, res) => {
     try {

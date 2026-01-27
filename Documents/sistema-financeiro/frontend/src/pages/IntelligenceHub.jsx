@@ -106,13 +106,25 @@ const IntelligenceHub = ({ companyId, apiBase, onNavigate }) => {
     if (!companyId || !confirm(`Remover meta de ${selectedYear}?`)) return;
     setDeletingGoal(true);
     try {
-      await axios.delete(`${BASE_URL}/api/intelligence/goals`, { params: { companyId, year: selectedYear } });
-      await loadIntelligence();
+      // IMPORTANTE: Enviar como 'params' para que o axios monte a URL: ?companyId=X&year=Y
+      await axios.delete(`${BASE_URL}/api/intelligence/goals`, { 
+        params: { 
+          companyId: companyId, 
+          year: selectedYear 
+        } 
+      });
+      
+      alert("Meta removida!");
       setIsGoalModalOpen(false);
       setGoalValue('');
-    } catch (error) { alert("Erro ao deletar meta."); } finally { setDeletingGoal(false); }
+      loadIntelligence(); // Recarrega os dados na tela
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao deletar meta.");
+    } finally {
+      setDeletingGoal(false);
+    }
   };
-
   const formatBRL = (valor) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
   // Lógica de Score

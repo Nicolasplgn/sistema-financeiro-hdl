@@ -88,7 +88,10 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   const [status, setStatus] = useState(null);
   const [showCloneModal, setShowCloneModal] = useState(false);
   
-  // NOVO ESTADO DE UPLOAD
+  // ESTADO DO MODAL DE CLONE
+  const [cloneTarget, setCloneTarget] = useState('');
+
+  // ESTADO DE UPLOAD
   const [isUploading, setIsUploading] = useState(false);
   
   // ESTADO DO NOVO ITEM ANALÍTICO
@@ -393,12 +396,41 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                     </div>
 
                     <div className="flex gap-2">
-                        <input type="text" placeholder="Histórico / Descrição..." value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} className="flex-1 text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50" />
+                        <input 
+                            type="text" 
+                            placeholder="Histórico / Descrição..." 
+                            value={newItem.description} 
+                            onChange={e => setNewItem({...newItem, description: e.target.value})} 
+                            className="flex-1 text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600" 
+                        />
                         <div className="relative w-28">
                             <span className="absolute left-3 top-4 text-[10px] font-bold text-slate-500">R$</span>
-                            <input type="number" placeholder="0.00" value={newItem.amount} onChange={e => setNewItem({...newItem, amount: e.target.value})} className="w-full text-sm font-black border-none rounded-xl p-4 pl-8 bg-slate-800 text-blue-400 outline-none ring-1 ring-white/5 font-mono"/>
+                            <input 
+                                type="number" 
+                                placeholder="0.00" 
+                                value={newItem.amount} 
+                                onChange={e => setNewItem({...newItem, amount: e.target.value})} 
+                                className="w-full text-sm font-black border-none rounded-xl p-4 pl-8 bg-slate-800 text-blue-400 outline-none ring-1 ring-white/5 font-mono focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600"
+                            />
                         </div>
-                        <button onClick={() => { if (!newItem.category_id || !newItem.amount) return; setDetails([...details, { ...newItem, id: Date.now() }]); setNewItem({ ...newItem, amount: '', description: '' }); }} className="bg-blue-600 text-white px-4 rounded-xl hover:bg-blue-500 transition shadow-lg active:scale-95"><Plus size={20}/></button>
+                        <button 
+                            type="button" 
+                            onClick={() => { 
+                                // VALIDAÇÃO COM FEEDBACK
+                                if (!newItem.category_id) return alert("Selecione uma Classificação Contábil.");
+                                if (!newItem.amount || Number(newItem.amount) <= 0) return alert("Informe um valor válido.");
+                                
+                                // ADICIONA À LISTA
+                                setDetails([...details, { ...newItem, id: Date.now() }]); 
+                                
+                                // LIMPA CAMPOS (Mantém tipo e categoria para agilizar digitação em massa)
+                                setNewItem({ ...newItem, amount: '', description: '' }); 
+                            }} 
+                            className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl transition shadow-lg active:scale-95 flex items-center justify-center"
+                            title="Adicionar Item"
+                        >
+                            <Plus size={20}/>
+                        </button>
                     </div>
                 </div>
 
@@ -507,6 +539,79 @@ const FinancialEntries = ({ companyId, apiBase }) => {
           {history.length === 0 && <div className="p-20 text-center font-bold text-slate-300 italic text-xs uppercase tracking-[0.3em]">Nenhum registro encontrado.</div>}
         </div>
       </div>
+
+      {/* MODAL DE CLONAGEM - VERSÃO CORRIGIDA */}
+      <AnimatePresence>
+        {showCloneModal && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative">
+                    <button onClick={() => setShowCloneModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    
+                    <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Copy size={32}/></div>
+                        <h3 className="text-xl font-black text-slate-900">Clonar Competência</h3>
+                        <p className="text-xs text-slate-500 font-medium mt-2">Copia todos os lançamentos de um mês para outro.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem (Copia deste)</label>
+                            <input disabled value={currentMonth} className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-500 text-center border-none outline-none"/>
+                        </div>
+                        
+                        <div className="flex justify-center"><ArrowDownCircle className="text-slate-300"/></div>
+                        
+                        <div>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino (Cola neste)</label>
+                            <input 
+                                type="month" 
+                                value={cloneTarget} 
+                                onChange={(e) => setCloneTarget(e.target.value)}
+                                className="w-full p-3 bg-white border-2 border-amber-100 focus:border-amber-400 rounded-xl font-bold text-slate-700 text-center outline-none transition-colors"
+                            />
+                        </div>
+
+                        <button 
+                            type="button" 
+                            onClick={async () => {
+                                if (!cloneTarget) return alert("Por favor, selecione o mês de destino.");
+                                if (cloneTarget === currentMonth) return alert("O mês de destino deve ser diferente da origem.");
+
+                                try {
+                                    const btn = document.getElementById('btn-clonar');
+                                    if(btn) btn.innerText = "Clonando...";
+
+                                    await axios.post(`${BASE_URL}/api/entries/clone`, {
+                                        companyId,
+                                        sourceMonth: currentMonth,
+                                        targetMonth: cloneTarget
+                                    });
+
+                                    alert("✅ Mês clonado com sucesso!");
+                                    setShowCloneModal(false);
+                                    setCloneTarget(''); 
+                                    
+                                    const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
+                                    setHistory(resHist.data);
+
+                                } catch (err) {
+                                    const msg = err.response?.data?.error || err.message;
+                                    alert(`❌ Erro ao clonar: ${msg}`);
+                                } finally {
+                                    const btn = document.getElementById('btn-clonar');
+                                    if(btn) btn.innerText = "Confirmar Cópia";
+                                }
+                            }}
+                            id="btn-clonar"
+                            className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-200 transition-all mt-2 active:scale-95"
+                        >
+                            Confirmar Cópia
+                        </button>
+                    </div>
+                </motion.div>
+            </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
