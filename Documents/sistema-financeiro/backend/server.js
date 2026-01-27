@@ -985,36 +985,79 @@ app.delete('/api/entries', async (req, res) => {
 
 app.post('/api/report', async (req, res) => { 
     try { 
-        const [r] = await pool.execute(
-            `SELECT period_start, SUM(revenue_resale) as revenue_resale, SUM(revenue_product) as revenue_product, SUM(revenue_service) as revenue_service, SUM(revenue_rent) as revenue_rent, SUM(revenue_other) as revenue_other, SUM(tax_icms) as tax_icms, SUM(tax_pis) as tax_pis, SUM(tax_cofins) as tax_cofins, SUM(tax_iss) as tax_iss, SUM(tax_irpj) as tax_irpj, SUM(tax_csll) as tax_csll, SUM(purchases_total) as purchases_total, SUM(expenses_total) as expenses_total FROM monthly_entries WHERE company_id IN (${req.body.companyIds.join(',')}) AND period_start >= ? AND period_start <= ? GROUP BY period_start`, 
-            [req.body.startDate, req.body.endDate]
-        ); 
+        // Garante que companyIds seja um array válido
+        const companyIds = Array.isArray(req.body.companyIds) && req.body.companyIds.length > 0 
+            ? req.body.companyIds 
+            : [req.body.companyId || 0];
+
+        // SQL Otimizado com COALESCE para evitar NULL
+        const query = `
+            SELECT 
+                DATE_FORMAT(period_start, '%Y-%m') as month_key,
+                SUM(COALESCE(revenue_resale,0) + COALESCE(revenue_product,0) + COALESCE(revenue_service,0) + COALESCE(revenue_rent,0) + COALESCE(revenue_other,0)) as total_revenue,
+                SUM(COALESCE(tax_icms,0) + COALESCE(tax_difal,0)) as total_icms,
+                SUM(COALESCE(tax_pis,0)) as total_pis,
+                SUM(COALESCE(tax_cofins,0)) as total_cofins,
+                SUM(COALESCE(tax_iss,0)) as total_iss,
+                SUM(COALESCE(tax_irpj,0) + COALESCE(tax_additional_irpj,0) + COALESCE(tax_csll,0)) as total_ir_csll,
+                SUM(COALESCE(purchases_total,0)) as total_purchases,
+                SUM(COALESCE(expenses_total,0)) as total_expenses
+            FROM monthly_entries 
+            WHERE company_id IN (${companyIds.join(',')}) 
+            AND period_start >= ? AND period_start <= ? 
+            GROUP BY month_key
+            ORDER BY month_key ASC
+        `;
+
+        const [rows] = await pool.execute(query, [req.body.startDate, req.body.endDate]); 
+
+        const months = rows.map(row => {
+            const rev = Number(row.total_revenue);
+            const taxes = Number(row.total_icms) + Number(row.total_pis) + Number(row.total_cofins) + Number(row.total_iss) + Number(row.total_ir_csll);
+            const costs = Number(row.total_purchases) + Number(row.total_expenses);
+            
+            return { 
+                monthKey: row.month_key, 
+                totalRevenue: rev, 
+                totalTaxes: taxes,
+                tax_icms: Number(row.total_icms),
+                tax_pis: Number(row.total_pis),
+                tax_cofins: Number(row.total_cofins),
+                tax_iss: Number(row.total_iss),
+                tax_irpj_csll: Number(row.total_ir_csll),
+                totalPurchases: Number(row.total_purchases), 
+                totalExpenses: Number(row.total_expenses), 
+                profit: rev - taxes - costs 
+            };
+        });
         
+        // Sumarização total
+        const summary = months.reduce((acc, curr) => ({
+            totalRevenue: acc.totalRevenue + curr.totalRevenue,
+            totalProfit: acc.totalProfit + curr.profit,
+            totalTaxes: acc.totalTaxes + curr.totalTaxes,
+            totalCosts: acc.totalCosts + curr.totalPurchases + curr.totalExpenses,
+            // Detalhado para o gráfico de pizza
+            tax_icms: acc.tax_icms + curr.tax_icms,
+            tax_pis: acc.tax_pis + curr.tax_pis,
+            tax_cofins: acc.tax_cofins + curr.tax_cofins,
+            tax_iss: acc.tax_iss + curr.tax_iss,
+            tax_irpj: acc.tax_irpj + curr.tax_irpj_csll,
+            tax_csll: 0 // Já somado no irpj para simplificar visualização ou pode separar se quiser
+        }), { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0, tax_icms: 0, tax_pis: 0, tax_cofins: 0, tax_iss: 0, tax_irpj: 0 });
+
+        // Busca categorias (sem alteração)
         const [c] = await pool.execute(
-            `SELECT c.name, SUM(ed.amount) as total FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id WHERE me.company_id IN (${req.body.companyIds.join(',')}) AND me.period_start >= ? AND me.period_start <= ? AND ed.type = 'EXPENSE' GROUP BY c.name`, 
+            `SELECT c.name, SUM(ed.amount) as total FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id WHERE me.company_id IN (${companyIds.join(',')}) AND me.period_start >= ? AND me.period_start <= ? AND ed.type = 'EXPENSE' GROUP BY c.name`, 
             [req.body.startDate, req.body.endDate]
         ); 
         
-        const months = r.map(row => ({ 
-            monthKey: row.period_start.substring(0,7), 
-            totalRevenue: Object.values(row).slice(1,6).reduce((a,b)=>a+Number(b),0), 
-            totalTaxes: Object.values(row).slice(6,12).reduce((a,b)=>a+Number(b),0), 
-            totalPurchases: Number(row.purchases_total), 
-            totalExpenses: Number(row.expenses_total), 
-            profit: Object.values(row).slice(1,6).reduce((a,b)=>a+Number(b),0) - Object.values(row).slice(6,12).reduce((a,b)=>a+Number(b),0) - Number(row.purchases_total) - Number(row.expenses_total) 
-        }));
-        
-        res.json({
-            months, 
-            summary: {
-                totalRevenue: months.reduce((a,b)=>a+b.totalRevenue,0), 
-                totalProfit: months.reduce((a,b)=>a+b.profit,0), 
-                totalTaxes: months.reduce((a,b)=>a+b.totalTaxes,0), 
-                totalCosts: months.reduce((a,b)=>a+b.totalPurchases+b.totalExpenses,0)
-            }, 
-            categories: c
-        }); 
-    } catch (e) { res.status(500).json({ error: e.message }); } 
+        res.json({ months, summary, categories: c }); 
+
+    } catch (e) { 
+        console.error("Erro Report:", e);
+        res.status(500).json({ error: e.message }); 
+    } 
 });
 
 app.get('/api/intelligence/:companyId/:year', async (req, res) => { 
@@ -1182,6 +1225,46 @@ app.post('/api/import/dre', authenticateToken, upload.single('file'), async (req
         conn.release();
     }
 });
+
+// ROTA DE RANKING DE PARCEIROS (CURVA ABC)
+app.get('/api/reports/partners-ranking', async (req, res) => {
+    try {
+        const { companyId, startDate, endDate } = req.query;
+
+        // Query para Clientes (Receita)
+        const [clients] = await pool.execute(`
+            SELECT p.name, SUM(ed.amount) as value
+            FROM entry_details ed
+            JOIN partners p ON ed.partner_id = p.id
+            JOIN monthly_entries me ON ed.entry_id = me.id
+            WHERE me.company_id = ? 
+            AND me.period_start >= ? AND me.period_start <= ?
+            AND ed.type = 'REVENUE'
+            GROUP BY p.name
+            ORDER BY value DESC
+            LIMIT 5
+        `, [companyId, startDate, endDate]);
+
+        // Query para Fornecedores (Despesa)
+        const [suppliers] = await pool.execute(`
+            SELECT p.name, SUM(ed.amount) as value
+            FROM entry_details ed
+            JOIN partners p ON ed.partner_id = p.id
+            JOIN monthly_entries me ON ed.entry_id = me.id
+            WHERE me.company_id = ? 
+            AND me.period_start >= ? AND me.period_start <= ?
+            AND ed.type = 'EXPENSE'
+            GROUP BY p.name
+            ORDER BY value DESC
+            LIMIT 5
+        `, [companyId, startDate, endDate]);
+
+        res.json({ clients, suppliers });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Inicialização do Servidor
 initDb().then(() => {
     app.listen(PORT, '0.0.0.0', () => {
