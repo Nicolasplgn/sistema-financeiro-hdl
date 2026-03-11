@@ -9,10 +9,11 @@ import {
   UploadCloud, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ImportModal from '../components/ImportModal';
 
-/**
- * ESTADO INICIAL DO FORMULÁRIO
- */
+// =================================================================================
+// ESTADO INICIAL DO FORMULÁRIO
+// =================================================================================
 const INITIAL_FORM_STATE = {
   revenue: { resale: 0, product: 0, service: 0, rent: 0, other: 0 },
   taxes: { icms: 0, difal: 0, iss: 0, fust: 0, funtell: 0, pis: 0, cofins: 0, csll: 0, irpj: 0, additionalIrpj: 0 },
@@ -21,9 +22,9 @@ const INITIAL_FORM_STATE = {
   notes: ''
 };
 
-/**
- * COMPONENTE DE INPUT MONETÁRIO COM MÁSCARA
- */
+// =================================================================================
+// COMPONENTE DE INPUT MONETÁRIO COM MÁSCARA
+// =================================================================================
 const MoneyInput = ({ label, value, onChange, readOnly = false }) => {
   const handleChange = (e) => {
     if (readOnly) return;
@@ -51,9 +52,9 @@ const MoneyInput = ({ label, value, onChange, readOnly = false }) => {
   );
 };
 
-/**
- * SEÇÃO DE AGRUPAMENTO DE CAMPOS
- */
+// =================================================================================
+// SEÇÃO DE AGRUPAMENTO DE CAMPOS
+// =================================================================================
 const InputSection = ({ title, icon: Icon, color, children, description }) => (
   <motion.div 
     initial={{ opacity: 0, y: 10 }}
@@ -73,12 +74,14 @@ const InputSection = ({ title, icon: Icon, color, children, description }) => (
   </motion.div>
 );
 
+// =================================================================================
+// COMPONENTE PRINCIPAL
+// =================================================================================
 const FinancialEntries = ({ companyId, apiBase }) => {
   const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
   const user = JSON.parse(localStorage.getItem('hdl_user'));
-  const fileInputRef = useRef(null);
 
-  // ESTADOS PRINCIPAIS
+  // ── Estados Principais ──────────────────────────────────────────────────────
   const [currentMonth, setCurrentMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [details, setDetails] = useState([]);
@@ -87,14 +90,12 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState(null);
   const [showCloneModal, setShowCloneModal] = useState(false);
-  
-  // ESTADO DO MODAL DE CLONE
   const [cloneTarget, setCloneTarget] = useState('');
 
-  // ESTADO DE UPLOAD
-  const [isUploading, setIsUploading] = useState(false);
-  
-  // ESTADO DO NOVO ITEM ANALÍTICO
+  // ── Estado do Modal de Importação (NOVO) ────────────────────────────────────
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  // ── Estado do Novo Item Analítico ───────────────────────────────────────────
   const [newItem, setNewItem] = useState({ 
     partner_id: '', 
     category_id: '', 
@@ -103,14 +104,14 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     description: '' 
   });
 
-  // NAVEGAÇÃO DE MÊS
+  // ── Navegação de Mês ────────────────────────────────────────────────────────
   const changeMonth = (offset) => {
     const [year, month] = currentMonth.split('-').map(Number);
     const date = new Date(year, month - 1 + offset, 1);
     setCurrentMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  // CÁLCULO DE TOTAIS E MARGENS PARA A DRE
+  // ── Cálculo de Totais e Margens para a DRE ──────────────────────────────────
   const totals = useMemo(() => {
     const totalRev = Object.values(form.revenue).reduce((a, b) => Number(a) + Number(b), 0);
     const totalTax = Object.values(form.taxes).reduce((a, b) => Number(a) + Number(b), 0);
@@ -120,7 +121,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     return { totalRev, totalTax, totalCost, profit, margin };
   }, [form]);
 
-  // SINCRONIZAÇÃO: LANÇAMENTOS ANALÍTICOS -> TOTAIS DA DRE
+  // ── Sincronização: Lançamentos Analíticos → Totais da DRE ──────────────────
   useEffect(() => {
     const sumExpenses = details.filter(item => item.type === 'EXPENSE').reduce((acc, curr) => acc + Number(curr.amount), 0);
     const sumRevenueExtras = details.filter(item => item.type === 'REVENUE').reduce((acc, curr) => acc + Number(curr.amount), 0);
@@ -132,7 +133,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     }));
   }, [details]);
 
-  // CARREGAR HISTÓRICO E DADOS INICIAIS
+  // ── Carregar Histórico e Dados Iniciais ─────────────────────────────────────
   const loadInitialData = async () => {
     try {
       const [resPartners, resCategories, resHistory] = await Promise.all([
@@ -155,7 +156,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     }
   }, [companyId]);
 
-  // CARREGAR LANÇAMENTOS DO MÊS SELECIONADO
+  // ── Carregar Lançamentos do Mês Selecionado ─────────────────────────────────
   useEffect(() => {
     if (!companyId) return;
     
@@ -189,7 +190,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     loadCurrentEntry();
   }, [companyId, currentMonth]);
 
-  // FUNÇÃO DE LIMPEZA TOTAL (CAMPOS + ANALÍTICO)
+  // ── Função de Limpeza Total ──────────────────────────────────────────────────
   const handleClearEverything = () => {
     if (window.confirm("Deseja limpar todos os campos e a lista de lançamentos analíticos deste formulário?")) {
         setForm(INITIAL_FORM_STATE);
@@ -198,7 +199,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     }
   };
 
-  // SALVAR NO BANCO DE DADOS
+  // ── Salvar no Banco de Dados ─────────────────────────────────────────────────
   const handleSaveData = async () => {
     if (!companyId) return;
     setStatus('saving');
@@ -210,7 +211,6 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       setStatus('success'); 
       setTimeout(() => setStatus(null), 3000); 
       
-      // Atualiza o histórico após salvar
       const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
       setHistory(resHist.data);
 
@@ -219,45 +219,25 @@ const FinancialEntries = ({ companyId, apiBase }) => {
         setStatus('error'); 
     }
   };
-  
-  // UPLOAD DE EXCEL
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !companyId) return;
 
-    if (!confirm("Isso importará os dados da planilha e atualizará os meses correspondentes no sistema. Deseja continuar?")) {
-        e.target.value = null; 
-        return;
-    }
+  // ── Callback após importação bem-sucedida (NOVO) ────────────────────────────
+  const handleImportSuccess = async ({ period: importedPeriod }) => {
+    // 1. Atualiza o histórico
+    const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
+    setHistory(resHist.data);
 
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('companyId', companyId);
-
-    try {
-        await axios.post(`${BASE_URL}/api/import/dre`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        alert("Importação concluída com sucesso! Os dados do BI foram atualizados.");
-        
-        // Recarrega histórico
-        const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
-        setHistory(resHist.data);
-        
-        // Força reload do mês atual
-        const [y, m] = currentMonth.split('-');
-        setCurrentMonth(`${y}-${m}`); 
-        
-    } catch (error) {
-        alert("Erro na importação. Verifique se a planilha segue o modelo padrão.");
-        console.error(error);
-    } finally {
-        setIsUploading(false);
-        e.target.value = null; 
+    // 2. Se o período importado for o mês atual em tela, força recarregamento
+    if (importedPeriod && importedPeriod === currentMonth) {
+      const [y, m] = currentMonth.split('-');
+      const prev = m === '01' ? '02' : String(parseInt(m) - 1).padStart(2, '0');
+      setCurrentMonth(`${y}-${prev}`);
+      setTimeout(() => setCurrentMonth(`${y}-${m}`), 80);
+    } else if (importedPeriod) {
+      setCurrentMonth(importedPeriod);
     }
   };
 
+  // ── Deletar Lançamento Histórico ─────────────────────────────────────────────
   const handleDeleteEntry = async (date) => {
       if(!confirm("Deseja apagar este registro histórico?")) return;
       try {
@@ -280,17 +260,11 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   
   const filteredPartners = partners.filter(p => newItem.type === 'REVENUE' ? (p.type === 'CLIENT' || p.type === 'BOTH') : (p.type === 'SUPPLIER' || p.type === 'BOTH'));
 
+  // =============================================================================
+  // RENDERIZAÇÃO
+  // =============================================================================
   return (
     <div className="max-w-7xl mx-auto pb-20 px-6 animate-in fade-in duration-700">
-      
-      {/* Input Oculto para Upload */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileUpload} 
-        accept=".xlsx, .xls, .csv" 
-        className="hidden" 
-      />
 
       {/* CABEÇALHO */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center py-10 gap-6">
@@ -303,14 +277,13 @@ const FinancialEntries = ({ companyId, apiBase }) => {
 
         <div className="flex items-center gap-3">
            
-           {/* BOTÃO DE IMPORTAÇÃO */}
+           {/* BOTÃO DE IMPORTAÇÃO — abre o modal unificado */}
            <button 
-             onClick={() => fileInputRef.current.click()} 
-             disabled={isUploading}
+             onClick={() => setIsImportModalOpen(true)}
              className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 uppercase tracking-widest active:scale-95"
            >
-             {isUploading ? <Loader2 size={16} className="animate-spin"/> : <UploadCloud size={16}/>}
-             Importar DRE
+             <UploadCloud size={16}/>
+             Importar Dados
            </button>
 
            <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5">
@@ -416,14 +389,9 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                         <button 
                             type="button" 
                             onClick={() => { 
-                                // VALIDAÇÃO COM FEEDBACK
                                 if (!newItem.category_id) return alert("Selecione uma Classificação Contábil.");
                                 if (!newItem.amount || Number(newItem.amount) <= 0) return alert("Informe um valor válido.");
-                                
-                                // ADICIONA À LISTA
                                 setDetails([...details, { ...newItem, id: Date.now() }]); 
-                                
-                                // LIMPA CAMPOS (Mantém tipo e categoria para agilizar digitação em massa)
                                 setNewItem({ ...newItem, amount: '', description: '' }); 
                             }} 
                             className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl transition shadow-lg active:scale-95 flex items-center justify-center"
@@ -447,7 +415,11 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                             </div>
                         </div>
                     ))}
-                    {details.length === 0 && <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl"><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Nenhum item analítico</p></div>}
+                    {details.length === 0 && (
+                        <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl">
+                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Nenhum item analítico</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -491,15 +463,21 @@ const FinancialEntries = ({ companyId, apiBase }) => {
 
       {/* HISTÓRICO CONSOLIDADO */}
       <div className="mt-20">
-        <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 mb-8"><div className="w-1.5 h-6 bg-slate-300 rounded-full"/> Histórico de Consolidação</h2>
+        <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 mb-8">
+          <div className="w-1.5 h-6 bg-slate-300 rounded-full"/> Histórico de Consolidação
+        </h2>
         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <tr><th className="px-10 py-5">Período Fiscal</th><th className="px-10 py-5 text-right">Faturamento Total</th><th className="px-10 py-5 text-right">EBITDA</th><th className="px-10 py-5 text-center">Ações</th></tr>
+              <tr>
+                <th className="px-10 py-5">Período Fiscal</th>
+                <th className="px-10 py-5 text-right">Faturamento Total</th>
+                <th className="px-10 py-5 text-right">EBITDA</th>
+                <th className="px-10 py-5 text-center">Ações</th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
               {history.map((item) => {
-                // CORREÇÃO: Somar as colunas individuais
                 const totalRev = 
                   Number(item.revenue_resale || 0) + 
                   Number(item.revenue_product || 0) + 
@@ -536,11 +514,15 @@ const FinancialEntries = ({ companyId, apiBase }) => {
               })}
             </tbody>
           </table>
-          {history.length === 0 && <div className="p-20 text-center font-bold text-slate-300 italic text-xs uppercase tracking-[0.3em]">Nenhum registro encontrado.</div>}
+          {history.length === 0 && (
+            <div className="p-20 text-center font-bold text-slate-300 italic text-xs uppercase tracking-[0.3em]">
+              Nenhum registro encontrado.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* MODAL DE CLONAGEM - VERSÃO CORRIGIDA */}
+      {/* MODAL DE CLONAGEM */}
       <AnimatePresence>
         {showCloneModal && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
@@ -612,6 +594,22 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             </motion.div>
         )}
       </AnimatePresence>
+
+      {/* MODAL DE IMPORTAÇÃO UNIFICADO (NOVO) */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={handleImportSuccess}
+        companyId={companyId}
+        apiBase={BASE_URL}
+      />
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+      `}} />
     </div>
   );
 };

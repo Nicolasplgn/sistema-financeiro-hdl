@@ -12,14 +12,14 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
   const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
 
   // --- ESTADOS ---
-  const [products, setProducts] = useState([]);
+  const[products, setProducts] = useState([]);
   const [channels, setChannels] = useState([]);
   
-  const [selectedProduct, setSelectedProduct] = useState('');
+  const[selectedProduct, setSelectedProduct] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('');
   
   const [activeTab, setActiveTab] = useState('tributos'); 
-  const [fetchingBase, setFetchingBase] = useState(false);
+  const[fetchingBase, setFetchingBase] = useState(false);
   
   const [sim, setSim] = useState({
     custoIndustrial: 0, frete: 0,
@@ -273,7 +273,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
                 <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl group-hover:bg-blue-600/30 transition-all duration-700"/>
                 
                 <div className="relative z-10">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 block flex items-center gap-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                         <Tag size={14}/> Margem Líquida Alvo
                     </label>
                     <div className="flex items-baseline gap-2 mb-10">
