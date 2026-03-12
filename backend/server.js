@@ -53,8 +53,7 @@ const amountOrZero = (valor) => {
 const logAction = async (userId, userName, action, details) => { 
     try { 
         await pool.execute(
-            'INSERT INTO audit_logs (user_id, user_name, action, details) VALUES (?, ?, ?, ?)', 
-            [userId || 0, userName || 'Sistema', action, details]
+            'INSERT INTO audit_logs (user_id, user_name, action, details) VALUES (?, ?, ?, ?)',[userId || 0, userName || 'Sistema', action, details]
         ); 
         console.log(`LOG [${action}]: ${details}`);
     } catch(error) { 
@@ -260,63 +259,70 @@ const TAX_PATTERNS =[
 ];
 
 const CPV_IN_GROUP2  =[/CPV|CMV|CUSTO.*PROD.*VEND|CUSTO.*MERC.*VEND/i, /FRETE.*COMP|FRETE.*ENTR|FRETE.*MAT/i, /DEVOLU[ÇC]/i, /ABATIMENTO/i];
-const EXPENSE_IN_GROUP2 = [/COMISS/i, /DESCONTO\s*CONCEDIDO/i];
+const EXPENSE_IN_GROUP2 =[/COMISS/i, /DESCONTO\s*CONCEDIDO/i];
 
+// RESOLVIDO: TRATAMENTO DE ZEROS À ESQUERDA E GRUPOS CONTÁBEIS
 const mapAccountToColumns = (account) => {
-    const { classificacao, descricao, entrada, saida, saldo } = account;
-    const firstChar = classificacao.charAt(0);
+    const { classificacao, descricao, entrada, saida } = account;
     const desc = descricao.toUpperCase();
 
-    if (firstChar === '1') {
-        let column = 'revenue_product';
-        for (const p of REVENUE_PATTERNS) { 
-            if (p.regex.test(desc)) { column = p.column; break; } 
+    // Extrai o grupo principal de forma inteligente, ignorando zeros à esquerda
+    // Ex: "04.01.01" -> quebra no ponto -> pega "04" -> converte pra número 4.
+    // Ex: "14.05" -> pega "14" -> converte pra 14.
+    const mainGroup = parseInt(classificacao.split(/[.,]/)[0], 10);
+
+    // IGNORA GRUPOS INVÁLIDOS E CONTAS PATRIMONIAIS/PASSIVOS (Grupo 10+)
+    if (isNaN(mainGroup) || mainGroup >= 10 || mainGroup === 0) {
+        return null;
+    }
+
+    // GRUPO 1 E 6: RECEITAS (Cálculo: Entrada - Saída)
+    if (mainGroup === 1 || mainGroup === 6) {
+        let column = mainGroup === 6 ? 'revenue_other' : 'revenue_product';
+        if (mainGroup === 1) {
+            for (const p of REVENUE_PATTERNS) { 
+                if (p.regex.test(desc)) { column = p.column; break; } 
+            }
         }
-        const value = entrada > 0 ? entrada : Math.abs(saldo);
-        if (value <= 0) return null;
+        const value = entrada - saida;
+        if (value === 0) return null;
         return { column, value, entryType: 'REVENUE', description: descricao };
     }
     
-    if (firstChar === '2') {
+    // GRUPO 2: DEDUÇÕES E IMPOSTOS (Cálculo: Saída - Entrada)
+    if (mainGroup === 2) {
+        let column = 'tax_icms'; // Fallback genérico
+        
         for (const p of CPV_IN_GROUP2) { 
-            if (p.test(desc)) { 
-                const value = saida > 0 ? saida : Math.abs(saldo); 
-                if (value <= 0) return null; 
-                return { column: 'purchases_total', value, entryType: 'EXPENSE', description: descricao }; 
-            } 
+            if (p.test(desc)) { column = 'purchases_total'; break; } 
         }
-        for (const p of EXPENSE_IN_GROUP2) { 
-            if (p.test(desc)) { 
-                const value = saida > 0 ? saida : Math.abs(saldo); 
-                if (value <= 0) return null; 
-                return { column: 'expenses_total', value, entryType: 'EXPENSE', description: descricao }; 
-            } 
+        if (column === 'tax_icms') {
+            for (const p of EXPENSE_IN_GROUP2) { 
+                if (p.test(desc)) { column = 'expenses_total'; break; } 
+            }
         }
-        let column = 'tax_icms';
-        for (const p of TAX_PATTERNS) { 
-            if (p.regex.test(desc)) { column = p.column; break; } 
+        if (column === 'tax_icms') {
+            for (const p of TAX_PATTERNS) { 
+                if (p.regex.test(desc)) { column = p.column; break; } 
+            }
         }
-        const value = saida > 0 ? saida : Math.abs(saldo);
-        if (value <= 0) return null;
+        
+        const value = saida - entrada;
+        if (value === 0) return null;
         return { column, value, entryType: 'EXPENSE', description: descricao };
     }
     
-    if (firstChar === '3') { 
-        const value = saida > 0 ? saida : Math.abs(saldo); 
-        if (value <= 0) return null; 
+    // GRUPO 3: CUSTOS DOS PRODUTOS E SERVIÇOS (Cálculo: Saída - Entrada)
+    if (mainGroup === 3) { 
+        const value = saida - entrada;
+        if (value === 0) return null; 
         return { column: 'purchases_total', value, entryType: 'EXPENSE', description: descricao }; 
     }
     
-    if (parseInt(firstChar) >= 4 && parseInt(firstChar) <= 9) { 
-        const value = saida > 0 ? saida : Math.abs(saldo); 
-        if (value <= 0) return null; 
-        return { column: 'expenses_total', value, entryType: 'EXPENSE', description: descricao }; 
-    }
-    
-    const firstTwo = parseInt(classificacao.substring(0, 2));
-    if (!isNaN(firstTwo) && firstTwo >= 10) { 
-        const value = saida > 0 ? saida : (entrada > 0 ? entrada : Math.abs(saldo)); 
-        if (value <= 0) return null; 
+    // GRUPO 4 E 5: DESPESAS OPERACIONAIS E NÃO OPERAC. (Cálculo: Saída - Entrada)
+    if (mainGroup === 4 || mainGroup === 5) { 
+        const value = saida - entrada;
+        if (value === 0) return null; 
         return { column: 'expenses_total', value, entryType: 'EXPENSE', description: descricao }; 
     }
     
@@ -625,7 +631,7 @@ app.use(authenticateToken);
 app.get('/api/admin/users', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ message: 'Sem permissão.' });
     try {
-        const[rows] = await pool.execute(`
+        const [rows] = await pool.execute(`
             SELECT u.id, u.full_name, u.email, u.role, u.max_companies, u.created_at, 
             (SELECT COUNT(*) FROM companies c WHERE c.owner_id = u.id) as companies_used 
             FROM users u ORDER BY u.created_at DESC
@@ -644,7 +650,8 @@ app.post('/api/admin/users', async (req, res) => {
         if (exists.length > 0) return res.status(400).json({ message: 'E-mail já cadastrado.' });
         
         const [result] = await pool.execute(
-            'INSERT INTO users (full_name, email, password_hash, role, max_companies) VALUES (?, ?, ?, ?, ?)',[full_name, email, password, role || 'ADMIN', max_companies || 1]
+            'INSERT INTO users (full_name, email, password_hash, role, max_companies) VALUES (?, ?, ?, ?, ?)',
+            [full_name, email, password, role || 'ADMIN', max_companies || 1]
         );
         
         await logAction(req.user.id, 'SuperAdmin', 'CREATE_USER', `Criou usuário: ${email}`);
@@ -680,7 +687,7 @@ app.put('/api/admin/users/:id', async (req, res) => {
 app.delete('/api/admin/users/:id', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ message: 'Sem permissão.' });
     try {
-        await pool.execute('DELETE FROM users WHERE id = ?',[req.params.id]);
+        await pool.execute('DELETE FROM users WHERE id = ?', [req.params.id]);
         await logAction(req.user.id, 'SuperAdmin', 'DELETE_USER', `Excluiu usuário ID: ${req.params.id}`);
         res.json({ success: true });
     } catch (error) { 
@@ -692,7 +699,7 @@ app.post('/api/admin/impersonate', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ message: 'Sem permissão.' });
     const { targetUserId } = req.body;
     try {
-        const [users] = await pool.execute('SELECT * FROM users WHERE id = ?',[targetUserId]);
+        const [users] = await pool.execute('SELECT * FROM users WHERE id = ?', [targetUserId]);
         if (users.length === 0) return res.status(404).json({ message: 'Usuário não encontrado' });
         
         const targetUser = users[0];
@@ -735,7 +742,7 @@ app.post('/api/fixed-expenses', async (req, res) => {
 
 app.delete('/api/fixed-expenses/:id', async (req, res) => { 
     try { 
-        await pool.execute('DELETE FROM fixed_expenses WHERE id = ?',[req.params.id]); 
+        await pool.execute('DELETE FROM fixed_expenses WHERE id = ?', [req.params.id]); 
         res.json({ success: true }); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -754,8 +761,9 @@ app.get('/api/payroll', async (req, res) => {
 app.post('/api/payroll', async (req, res) => { 
     const { company_id, employee_name, role, total_cost } = req.body; 
     try { 
-        const [result] = await pool.execute(
-            'INSERT INTO payroll_expenses (company_id, employee_name, role, total_cost) VALUES (?, ?, ?, ?)',[company_id, employee_name, role, total_cost]
+        const[result] = await pool.execute(
+            'INSERT INTO payroll_expenses (company_id, employee_name, role, total_cost) VALUES (?, ?, ?, ?)',
+            [company_id, employee_name, role, total_cost]
         ); 
         res.json({ success: true, id: result.insertId }); 
     } catch (e) { 
@@ -765,7 +773,7 @@ app.post('/api/payroll', async (req, res) => {
 
 app.delete('/api/payroll/:id', async (req, res) => { 
     try { 
-        await pool.execute('DELETE FROM payroll_expenses WHERE id = ?',[req.params.id]); 
+        await pool.execute('DELETE FROM payroll_expenses WHERE id = ?', [req.params.id]); 
         res.json({ success: true }); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -784,7 +792,7 @@ app.get('/api/prolabore', async (req, res) => {
 app.post('/api/prolabore', async (req, res) => { 
     const { company_id, partner_name, total_cost } = req.body; 
     try { 
-        const [result] = await pool.execute(
+        const[result] = await pool.execute(
             'INSERT INTO prolabore_expenses (company_id, partner_name, total_cost) VALUES (?, ?, ?)',[company_id, partner_name, total_cost]
         ); 
         res.json({ success: true, id: result.insertId }); 
@@ -795,7 +803,7 @@ app.post('/api/prolabore', async (req, res) => {
 
 app.delete('/api/prolabore/:id', async (req, res) => { 
     try { 
-        await pool.execute('DELETE FROM prolabore_expenses WHERE id = ?',[req.params.id]); 
+        await pool.execute('DELETE FROM prolabore_expenses WHERE id = ?', [req.params.id]); 
         res.json({ success: true }); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -808,7 +816,7 @@ app.delete('/api/prolabore/:id', async (req, res) => {
 app.get('/api/sales-channels', async (req, res) => {
     try {
         const { companyId } = req.query;
-        const [rows] = await pool.execute('SELECT * FROM sales_channels WHERE company_id = ? OR company_id = 1 ORDER BY name',[companyId || 0]);
+        const [rows] = await pool.execute('SELECT * FROM sales_channels WHERE company_id = ? OR company_id = 1 ORDER BY name', [companyId || 0]);
         
         const unique =[]; 
         const names = new Set();
@@ -830,7 +838,8 @@ app.post('/api/sales-channels', async (req, res) => {
     const { company_id, name } = req.body; 
     try { 
         const [resDb] = await pool.execute(
-            `INSERT INTO sales_channels (company_id, name) VALUES (?, ?)`,[company_id, name]
+            `INSERT INTO sales_channels (company_id, name) VALUES (?, ?)`,
+            [company_id, name]
         ); 
         await logAction(req.user.id, req.user.email, 'CREATE_BLOCK', `Criou bloco: ${name}`); 
         res.json({success: true, id: resDb.insertId}); 
@@ -841,7 +850,7 @@ app.post('/api/sales-channels', async (req, res) => {
 
 app.delete('/api/sales-channels/:id', async (req, res) => { 
     try { 
-        await pool.execute('DELETE FROM sales_channels WHERE id = ?',[req.params.id]); 
+        await pool.execute('DELETE FROM sales_channels WHERE id = ?', [req.params.id]); 
         await logAction(req.user.id, req.user.email, 'DELETE_BLOCK', `Excluiu bloco ID: ${req.params.id}`); 
         res.json({success: true}); 
     } catch (e) { 
@@ -896,7 +905,7 @@ app.post('/api/materials', async (req, res) => {
 
 app.get('/api/materials-full', async (req, res) => { 
     try { 
-        const [r] = await pool.execute('SELECT * FROM materials WHERE company_id = ? ORDER BY id DESC LIMIT 100',[req.query.companyId]); 
+        const [r] = await pool.execute('SELECT * FROM materials WHERE company_id = ? ORDER BY id DESC LIMIT 100', [req.query.companyId]); 
         res.json(r); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -1023,7 +1032,7 @@ app.post('/api/companies', async (req, res) => {
     try { 
         if (userRole !== 'SUPER_ADMIN') {
             const [usage] = await pool.execute('SELECT COUNT(*) as count FROM companies WHERE owner_id = ?', [userId]);
-            const [userLimit] = await pool.execute('SELECT max_companies FROM users WHERE id = ?', [userId]);
+            const[userLimit] = await pool.execute('SELECT max_companies FROM users WHERE id = ?', [userId]);
             
             if (usage[0].count >= userLimit[0].max_companies) {
                 return res.status(403).json({ error: `Limite de licenças atingido.` });
@@ -1048,7 +1057,7 @@ app.put('/api/companies/:id', async (req, res) => {
         const { name, trade_name, tax_id, tax_regime, group_id } = req.body;
         
         if (req.user.role !== 'SUPER_ADMIN') {
-            const [check] = await conn.execute('SELECT id FROM companies WHERE id = ? AND owner_id = ?',[companyId, req.user.id]);
+            const [check] = await conn.execute('SELECT id FROM companies WHERE id = ? AND owner_id = ?', [companyId, req.user.id]);
             if (check.length === 0) return res.status(403).json({ message: 'Sem permissão.' });
         }
         
@@ -1093,7 +1102,7 @@ app.delete('/api/companies/:id', async (req, res) => {
             await conn.execute(`DELETE FROM ${t} WHERE company_id = ?`, [companyId]);
         }
         
-        await conn.execute('UPDATE users SET company_id = NULL WHERE company_id = ?',[companyId]);
+        await conn.execute('UPDATE users SET company_id = NULL WHERE company_id = ?', [companyId]);
         await conn.execute('DELETE FROM companies WHERE id = ?', [companyId]);
         
         await conn.query('SET FOREIGN_KEY_CHECKS = 1');
@@ -1131,7 +1140,7 @@ app.post('/api/partners', async (req, res) => {
 
 app.delete('/api/partners/:id', async (req, res) => { 
     try { 
-        await pool.execute('DELETE FROM partners WHERE id = ?',[req.params.id]); 
+        await pool.execute('DELETE FROM partners WHERE id = ?', [req.params.id]); 
         res.json({success:true}); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -1153,12 +1162,11 @@ app.get('/api/categories', async (req, res) => {
 
 app.get('/api/entries', async (req, res) => { 
     try { 
-        const[r] = await pool.execute(
-            'SELECT * FROM monthly_entries WHERE company_id = ? AND period_start = ?',
-            [req.query.companyId, req.query.month]
+        const [r] = await pool.execute(
+            'SELECT * FROM monthly_entries WHERE company_id = ? AND period_start = ?',[req.query.companyId, req.query.month]
         ); 
         
-        if(r.length) { 
+        if (r.length) { 
             const [d] = await pool.execute('SELECT * FROM entry_details WHERE entry_id = ?', [r[0].id]); 
             res.json({...r[0], details:d}); 
         } else {
@@ -1176,7 +1184,8 @@ app.post('/api/entries', async (req, res) => {
     try {
         await conn.beginTransaction();
         const [existing] = await conn.execute(
-            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',[companyId, periodStart]
+            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', 
+            [companyId, periodStart]
         );
         let entryId;
         
@@ -1206,14 +1215,14 @@ app.post('/api/entries', async (req, res) => {
                     tax_additional_irpj, tax_fust, tax_funtell, purchases_total, expenses_total, 
                     notes, company_id, period_start, period_end
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            `,[...vals, companyId, periodStart, periodStart]);
+            `, [...vals, companyId, periodStart, periodStart]);
             entryId = r.insertId;
         }
         
         await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
         
-        if(details) { 
-            for(let d of details) { 
+        if (details) { 
+            for (let d of details) { 
                 await conn.execute(
                     'INSERT INTO entry_details (entry_id, partner_id, category_id, type, amount, description) VALUES (?,?,?,?,?,?)',[entryId, d.partner_id, d.category_id, d.type, d.amount, d.description]
                 ); 
@@ -1245,17 +1254,18 @@ app.post('/api/entries/clone', authenticateToken, async (req, res) => {
         const originEntry = source[0];
         
         const [targetCheck] = await conn.execute(
-            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',[companyId, targetMonth + '-01']
+            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',
+            [companyId, targetMonth + '-01']
         );
         if (targetCheck.length > 0) return res.status(400).json({ error: 'Mês de destino já possui lançamentos. Exclua antes de clonar.' });
         
         await conn.beginTransaction();
         
-        const[y, m] = targetMonth.split('-'); 
+        const [y, m] = targetMonth.split('-'); 
         const lastDay = new Date(y, m, 0).getDate(); 
         const periodEnd = `${y}-${m}-${lastDay}`;
         
-        const[result] = await conn.execute(`
+        const [result] = await conn.execute(`
             INSERT INTO monthly_entries (
                 company_id, period_start, period_end, revenue_resale, revenue_product, 
                 revenue_service, revenue_rent, revenue_other, tax_icms, tax_difal, tax_iss, 
@@ -1273,7 +1283,7 @@ app.post('/api/entries/clone', authenticateToken, async (req, res) => {
         
         const newEntryId = result.insertId;
         
-        const[details] = await conn.execute('SELECT * FROM entry_details WHERE entry_id = ?',[originEntry.id]);
+        const [details] = await conn.execute('SELECT * FROM entry_details WHERE entry_id = ?', [originEntry.id]);
         
         for (const det of details) { 
             await conn.execute(`
@@ -1297,7 +1307,7 @@ app.post('/api/entries/clone', authenticateToken, async (req, res) => {
 app.get('/api/entries/history', async (req, res) => {
     const { companyId } = req.query;
     try { 
-        const[rows] = await pool.execute('SELECT * FROM monthly_entries WHERE company_id = ? ORDER BY period_start DESC', [companyId]); 
+        const [rows] = await pool.execute('SELECT * FROM monthly_entries WHERE company_id = ? ORDER BY period_start DESC', [companyId]); 
         res.json(rows); 
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
@@ -1307,8 +1317,7 @@ app.get('/api/entries/history', async (req, res) => {
 app.delete('/api/entries', async (req, res) => {
     try { 
         await pool.execute(
-            'DELETE FROM monthly_entries WHERE company_id = ? AND period_start = ?',
-            [req.query.companyId, req.query.month]
+            'DELETE FROM monthly_entries WHERE company_id = ? AND period_start = ?',[req.query.companyId, req.query.month]
         ); 
         res.json({ success: true }); 
     } catch (e) { 
@@ -1341,7 +1350,7 @@ app.post('/api/report', async (req, res) => {
             ORDER BY month_key ASC
         `;
         
-        const [rows] = await pool.execute(query,[req.body.startDate, req.body.endDate]); 
+        const [rows] = await pool.execute(query, [req.body.startDate, req.body.endDate]); 
         
         const months = rows.map(row => ({ 
             monthKey: row.month_key, 
@@ -1373,7 +1382,7 @@ app.post('/api/report', async (req, res) => {
             AND me.period_start >= ? AND me.period_start <= ? 
             GROUP BY c.name, ed.type 
             ORDER BY total DESC
-        `,[req.body.startDate, req.body.endDate]); 
+        `, [req.body.startDate, req.body.endDate]); 
         
         res.json({ months, summary, categories }); 
         
@@ -1407,7 +1416,7 @@ app.get('/api/intelligence/:companyId/:year', async (req, res) => {
         const n = realized.length;
         
         if (n >= 2) {
-            let sumX=0, sumY=0, sumXY=0, sumXX=0;
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
             realized.forEach((row, index) => { 
                 const x = index + 1; 
                 const y = Number(row.revenue); 
@@ -1435,7 +1444,8 @@ app.post('/api/intelligence/goals', authenticateToken, async (req, res) => {
     try { 
         const { companyId, year, plannedAmount } = req.body; 
         await pool.execute(
-            'INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?',[companyId, year, plannedAmount, plannedAmount]
+            'INSERT INTO budget_goals (company_id, year, planned_amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE planned_amount = ?',
+            [companyId, year, plannedAmount, plannedAmount]
         ); 
         res.json({ success: true }); 
     } catch (e) { 
@@ -1527,7 +1537,7 @@ app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
     try {
         const { companyId, year } = req.query;
         
-        const[details] = await pool.execute(`
+        const [details] = await pool.execute(`
             SELECT c.name as category_name, ed.type, SUM(ed.amount) as total_value 
             FROM entry_details ed 
             JOIN monthly_entries me ON ed.entry_id=me.id 
@@ -1541,7 +1551,7 @@ app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
             SELECT SUM(tax_icms+tax_difal+tax_iss+tax_pis+tax_cofins+tax_csll+tax_irpj+tax_additional_irpj+tax_fust+tax_funtell) as total_taxes 
             FROM monthly_entries 
             WHERE company_id=? AND YEAR(period_start)=?
-        `,[companyId, year]);
+        `, [companyId, year]);
         
         const reportRows =[];
         
@@ -1663,13 +1673,13 @@ app.post('/api/import/dre', authenticateToken, upload.single('file'), async (req
             }
         }
 
-        for (const[periodStart, mData] of Object.entries(monthData)) {
+        for (const [periodStart, mData] of Object.entries(monthData)) {
             const [existing] = await conn.execute(
                 'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',[req.body.companyId, periodStart]
             );
             
             let entryId;
-            const[y, m] = periodStart.split('-');
+            const [y, m] = periodStart.split('-');
             const lastDay = new Date(y, m, 0).getDate();
             const periodEnd = `${y}-${m}-${lastDay}`;
 
@@ -1733,7 +1743,7 @@ app.post('/api/import/balancete', authenticateToken, upload.single('file'), asyn
         if (!period) throw new Error("Período não encontrado. Informe o mês ou verifique se o arquivo contém 'Emissão: DD/MM/AAAA' no rodapé.");
 
         const periodStart = `${period}-01`;
-        const[y, m] = period.split('-');
+        const [y, m] = period.split('-');
         const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
         const periodEnd = `${y}-${m}-${String(lastDay).padStart(2,'0')}`;
 
@@ -1761,9 +1771,9 @@ app.post('/api/import/balancete', authenticateToken, upload.single('file'), asyn
         };
 
         const categoriesMap = {};
-        for (const[col, cat] of Object.entries(CAT_DEFS)) {
+        for (const [col, cat] of Object.entries(CAT_DEFS)) {
             await conn.execute('INSERT IGNORE INTO categories (name, type) VALUES (?, ?)', [cat.name, cat.type]);
-            const[rows] = await conn.execute('SELECT id FROM categories WHERE name = ?', [cat.name]);
+            const [rows] = await conn.execute('SELECT id FROM categories WHERE name = ?', [cat.name]);
             if (rows.length > 0) categoriesMap[col] = rows[0].id;
         }
 
@@ -1788,12 +1798,12 @@ app.post('/api/import/balancete', authenticateToken, upload.single('file'), asyn
             }
         }
 
-        if (Object.keys(columnTotals).length === 0) throw new Error("Nenhum valor mapeado. Verifique se há contas nos grupos 1–4.");
+        if (Object.keys(columnTotals).length === 0) throw new Error("Nenhum valor mapeado. Verifique se há contas nos grupos 1 a 6.");
 
         await conn.beginTransaction();
 
         const [existing] = await conn.execute(
-            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',[companyId, periodStart]
+            'SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', [companyId, periodStart]
         );
         
         const notes = `Balancete CSV importado — Competência ${period}`;
@@ -1820,7 +1830,7 @@ app.post('/api/import/balancete', authenticateToken, upload.single('file'), asyn
                 tax_csll=?, tax_irpj=?, tax_additional_irpj=?, tax_fust=?, tax_funtell=?,
                 purchases_total=?, expenses_total=?, notes=? 
                 WHERE id=?
-            `,[...entryData, notes, entryId]);
+            `, [...entryData, notes, entryId]);
             
             await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
         } else {
@@ -1831,7 +1841,7 @@ app.post('/api/import/balancete', authenticateToken, upload.single('file'), asyn
                     tax_pis, tax_cofins, tax_csll, tax_irpj, tax_additional_irpj, tax_fust, tax_funtell, 
                     purchases_total, expenses_total, notes
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            `,[companyId, periodStart, periodEnd, ...entryData, notes]);
+            `, [companyId, periodStart, periodEnd, ...entryData, notes]);
             
             entryId = ins.insertId;
         }
@@ -1881,7 +1891,7 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
     try {
         const { companyId, startDate, endDate } = req.query;
         
-        const[clients] = await pool.execute(`
+        const [clients] = await pool.execute(`
             SELECT p.name, SUM(ed.amount) as value 
             FROM entry_details ed 
             JOIN partners p ON ed.partner_id=p.id 
@@ -1889,7 +1899,7 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
             WHERE me.company_id=? AND me.period_start>=? AND me.period_start<=? AND ed.type='REVENUE' 
             GROUP BY p.name 
             ORDER BY value DESC LIMIT 5
-        `,[companyId, startDate, endDate]);
+        `, [companyId, startDate, endDate]);
         
         const [suppliers] = await pool.execute(`
             SELECT p.name, SUM(ed.amount) as value 
@@ -1899,7 +1909,7 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
             WHERE me.company_id=? AND me.period_start>=? AND me.period_start<=? AND ed.type='EXPENSE' 
             GROUP BY p.name 
             ORDER BY value DESC LIMIT 5
-        `, [companyId, startDate, endDate]);
+        `,[companyId, startDate, endDate]);
         
         res.json({ clients, suppliers });
     } catch (e) { 
