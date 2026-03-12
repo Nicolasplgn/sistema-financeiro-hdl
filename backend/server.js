@@ -207,13 +207,34 @@ const parseBalanceteRows = (text) => {
 };
 
 const findLeafAccounts = (accounts) => {
-    const analytical = accounts.filter(a => a.tipoC !== 'T');
+    // 1. Se o sistema mandar explicitamente contas Analíticas (ex: tipo 'A' ou diferente de 'T')
+    const analytical = accounts.filter(a => a.tipoC === 'A');
     if (analytical.length > 0) return analytical;
-    
-    const allCls = accounts.map(a => a.classificacao);
-    return accounts.filter(acct => {
-        const cls = acct.classificacao;
-        return !allCls.some(other => other !== cls && (other.startsWith(cls + '.') || other.startsWith(cls + ',')));
+
+    // 2. Normalizador de Hierarquia (O CORAÇÃO DA CORREÇÃO)
+    // Transforma "04.01.01" e "4,01" ambos no padrão "4.1.1" e "4.1" para comparação real.
+    const normalize = (cls) => {
+        if (!cls) return '';
+        return cls.replace(/,/g, '.')        // Garante que separador é ponto
+                  .split('.')                // Separa os blocos
+                  .map(num => parseInt(num, 10)) // Converte '04' para 4 (tira zero à esquerda)
+                  .join('.');                // Junta de novo
+    };
+
+    // Cria um array só com as classificações normalizadas para checagem rápida
+    const allNormCls = accounts.map(a => normalize(a.classificacao));
+
+    // 3. Filtra: Só retorna a conta se ela NÃO for pai de ninguém
+    return accounts.filter((acct, index) => {
+        const myNormCls = normalize(acct.classificacao);
+        
+        // Verifica se existe alguma outra conta no array que comece com a "minha classe."
+        const isParent = allNormCls.some((otherCls, otherIndex) => {
+            return index !== otherIndex && otherCls.startsWith(myNormCls + '.');
+        });
+        
+        // Se NÃO for pai, é uma conta folha (Analítica). Pode somar!
+        return !isParent;
     });
 };
 
