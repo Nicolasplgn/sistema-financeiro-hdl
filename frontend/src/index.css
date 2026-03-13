@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 11px; /* Reduz tudo que é Tailwind para 75% do tamanho original */
+}
+
 /* Remove setas de input number */
 input[type=number]::-webkit-inner-spin-button, 
 input[type=number]::-webkit-outer-spin-button { 

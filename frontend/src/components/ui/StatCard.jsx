@@ -21,14 +21,14 @@ export const StatCard = ({ title, value, sub, icon: Icon, trend, color = 'blue' 
           <Icon size={24} />
         </div>
         {trend && (
-          <span className={`text-[10px] font-black px-2 py-1 rounded-full ${trend >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+          <span className={`text-[9px] font-black px-2 py-1 rounded-full ${trend >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
             {trend > 0 ? '+' : ''}{trend}%
           </span>
         )}
       </div>
       <div className="mt-4">
         <h4 className="text-3xl font-black text-slate-900 tracking-tighter">{value}</h4>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{title}</p>
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{title}</p>
         <p className="text-xs text-slate-500 mt-2 font-medium border-t border-slate-50 pt-2">{sub}</p>
       </div>
     </motion.div>

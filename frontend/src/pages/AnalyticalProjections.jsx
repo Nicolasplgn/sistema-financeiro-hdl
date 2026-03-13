@@ -43,7 +43,7 @@ const KpiCard = ({ title, value, sub, colorClass, icon: Icon }) => (
         </div>
     </div>
     <h3 className="text-2xl font-black text-slate-800 tracking-tighter">{value}</h3>
-    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{title}</p>
+    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{title}</p>
     <p className="text-[11px] text-slate-500 mt-2 font-medium">{sub}</p>
   </div>
 );
@@ -188,7 +188,7 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
   if (loading || !scenarios) return (
     <div className="h-96 flex flex-col items-center justify-center text-blue-600">
       <RefreshCw className="animate-spin mb-4" size={32}/>
-      <p className="font-black uppercase tracking-widest text-[10px]">Calculando Algoritmos de Tendência...</p>
+      <p className="font-black uppercase tracking-widest text-[9px]">Calculando Algoritmos de Tendência...</p>
     </div>
   );
 
@@ -236,14 +236,14 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
                 <div className="space-y-10">
                     <div className="group">
                         <div className="flex justify-between mb-3">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Receita Mensal</label>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Receita Mensal</label>
                           <span className="text-sm font-black text-blue-600">{growthRate}%</span>
                         </div>
                         <input type="range" min="-15" max="15" step="0.1" value={growthRate} onChange={e => setGrowthRate(e.target.value)} className="w-full accent-blue-600 h-1.5 bg-slate-100 rounded-lg cursor-pointer"/>
                     </div>
                     <div className="group">
                         <div className="flex justify-between mb-3">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inflação de Custos</label>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inflação de Custos</label>
                           <span className="text-sm font-black text-rose-600">{costRate}%</span>
                         </div>
                         <input type="range" min="-5" max="15" step="0.1" value={costRate} onChange={e => setCostRate(e.target.value)} className="w-full accent-rose-600 h-1.5 bg-slate-100 rounded-lg cursor-pointer"/>
@@ -251,9 +251,9 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
                 </div>
 
                 <div className="mt-10 pt-8 border-t border-slate-50">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Isolar Cenário Visual</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Isolar Cenário Visual</p>
                   <div className="flex gap-2">
-                    <button onClick={() => setViewScenario('ALL')} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${viewScenario === 'ALL' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-200'}`}>TODOS</button>
+                    <button onClick={() => setViewScenario('ALL')} className={`flex-1 py-3 text-[9px] font-black rounded-xl border transition-all ${viewScenario === 'ALL' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-200'}`}>TODOS</button>
                     <button onClick={() => setViewScenario('OPTIMISTIC')} className={`p-3 rounded-xl border transition-all ${viewScenario === 'OPTIMISTIC' ? 'bg-emerald-500 text-white shadow-lg' : 'border-slate-200 text-emerald-600'}`}><ArrowUpRight size={18}/></button>
                     <button onClick={() => setViewScenario('PESSIMISTIC')} className={`p-3 rounded-xl border transition-all ${viewScenario === 'PESSIMISTIC' ? 'bg-rose-500 text-white shadow-lg' : 'border-slate-200 text-rose-600'}`}><ArrowDownRight size={18}/></button>
                   </div>
@@ -279,15 +279,15 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
                 <div className="relative z-10">
                   {currentCash ? (
                       <div className="bg-white/5 p-6 rounded-3xl border border-white/5 text-center backdrop-blur-sm">
-                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest block mb-1">Queima de Caixa Estimada</span>
+                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest block mb-1">Queima de Caixa Estimada</span>
                           <span className="text-sm font-mono font-bold text-slate-300">{formatBRL(runwayData.burnRate)}/mês</span>
                           <div className="my-4 border-t border-white/5"></div>
-                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest block mb-2">Sua Empresa sobrevive por</span>
-                          <span className={`text-4xl font-black font-mono italic tracking-tighter ${runwayData.months < 4 ? 'text-rose-500' : 'text-emerald-400'}`}>{runwayData.months} Meses</span>
+                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest block mb-2">Sua Empresa sobrevive por</span>
+                          <span className={`text-2xl font-black font-mono italic tracking-tighter ${runwayData.months < 4 ? 'text-rose-500' : 'text-emerald-400'}`}>{runwayData.months} Meses</span>
                           {runwayData.months < 4 && <div className="mt-3 flex items-center justify-center gap-2 text-rose-500 font-black text-[9px] uppercase tracking-widest animate-pulse"><AlertTriangle size={12}/> Alerta de Liquidez</div>}
                       </div>
                   ) : (
-                      <div className="py-10 text-center border border-dashed border-white/10 rounded-3xl text-slate-600 font-black text-[10px] uppercase tracking-[0.2em]">Insira o saldo para projetar</div>
+                      <div className="py-10 text-center border border-dashed border-white/10 rounded-3xl text-slate-600 font-black text-[9px] uppercase tracking-[0.2em]">Insira o saldo para projetar</div>
                   )}
                 </div>
             </div>
@@ -316,7 +316,7 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
                   <h3 className="font-black text-slate-800 text-[11px] uppercase tracking-widest flex items-center gap-3">
                     <Calendar size={18} className="text-indigo-500"/> Mapa de Calor Sazonal
                   </h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Últimos 12 meses</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Últimos 12 meses</p>
                 </div>
                 <div className="grid grid-cols-4 md:grid-cols-12 gap-3">
                     {seasonalityMap.map((item, index) => (
@@ -327,13 +327,13 @@ const AnalyticalProjections = ({ globalCompanyId }) => {
                             >
                               {item.intensity > 85 ? <Sun size={18} className="animate-spin-slow"/> : item.intensity < 35 ? <Snowflake size={18}/> : null}
                             </motion.div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase">{item.month.split('-')[1]}</span>
-                            <div className="absolute bottom-full mb-3 bg-slate-900 text-white text-[10px] font-black px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap z-50 shadow-2xl border border-white/10 uppercase tracking-widest">
+                            <span className="text-[9px] font-black text-slate-400 uppercase">{item.month.split('-')[1]}</span>
+                            <div className="absolute bottom-full mb-3 bg-slate-900 text-white text-[9px] font-black px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap z-50 shadow-2xl border border-white/10 uppercase tracking-widest">
                                {formatBRL(item.val)}
                             </div>
                         </div>
                     ))}
-                    {seasonalityMap.length === 0 && <div className="col-span-12 py-10 text-center text-slate-300 font-black text-[10px] uppercase tracking-widest italic">Aguardando dados históricos suficientes</div>}
+                    {seasonalityMap.length === 0 && <div className="col-span-12 py-10 text-center text-slate-300 font-black text-[9px] uppercase tracking-widest italic">Aguardando dados históricos suficientes</div>}
                 </div>
             </div>
 

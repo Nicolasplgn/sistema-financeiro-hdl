@@ -90,32 +90,32 @@ const Companies = ({ apiBase, onSelectCompany }) => {
     };
 
     return (
-        <div className="p-10 max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
+        <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
             <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3"><Building2 className="text-blue-600" size={32}/> Unidades & Grupos</h1>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3"><Building2 className="text-blue-600" size={32}/> Unidades & Grupos</h1>
                     <p className="text-slate-400 font-medium mt-1">Gerencie a estrutura organizacional da sua holding.</p>
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={() => setIsGroupModalOpen(true)} className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-3 hover:bg-slate-50 shadow-sm transition-all"><Layers size={18}/> Novo Grupo</button>
-                    <button onClick={() => { setFormData({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' }); setIsCompModalOpen(true); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 hover:-translate-y-1 transition-all"><Plus size={18}/> Nova Unidade</button>
+                    <button onClick={() => setIsGroupModalOpen(true)} className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-black text-[9px] uppercase tracking-widest flex items-center gap-3 hover:bg-slate-50 shadow-sm transition-all"><Layers size={18}/> Novo Grupo</button>
+                    <button onClick={() => { setFormData({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' }); setIsCompModalOpen(true); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 hover:-translate-y-1 transition-all"><Plus size={18}/> Nova Unidade</button>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
                 <div className="lg:col-span-1 space-y-6">
-                    <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest ml-2">Grupos Corporativos</h3>
+                    <h3 className="font-black text-slate-400 text-[9px] uppercase tracking-widest ml-2">Grupos Corporativos</h3>
                     <div className="space-y-4">
                         {groups.map(g => (
                             <div key={g.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-md transition-all">
                                 <div>
                                     <p className="text-lg font-black text-slate-800 tracking-tighter italic">{g.name}</p>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">{companies.filter(c => c.group_id === g.id).length} Unidades vinculadas</p>
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase">{companies.filter(c => c.group_id === g.id).length} Unidades vinculadas</p>
                                 </div>
                                 <button onClick={async () => { if(confirm('Excluir grupo? As empresas cadastradas nele ficarão sem grupo.')) { await axios.delete(`${apiBase}/api/groups/${g.id}`); fetchAll(); } }} className="text-slate-300 hover:text-rose-500 transition-colors p-2 rounded-lg hover:bg-rose-50"><Trash2 size={16}/></button>
                             </div>
                         ))}
-                        {groups.length === 0 && <p className="text-slate-300 font-black text-[10px] uppercase text-center py-10 border-2 border-dashed border-slate-100 rounded-[2rem]">Nenhum grupo criado</p>}
+                        {groups.length === 0 && <p className="text-slate-300 font-black text-[9px] uppercase text-center py-10 border-2 border-dashed border-slate-100 rounded-[2rem]">Nenhum grupo criado</p>}
                     </div>
                 </div>
 
@@ -133,16 +133,16 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                                         <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
                                     </div>
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tighter italic mb-1">{company.trade_name || company.name}</h3>
+                                <h3 className="text-sm font-black text-slate-900 tracking-tighter italic mb-1">{company.trade_name || company.name}</h3>
                                 <div className="flex items-center gap-2 mb-6">
                                     <Layers size={12} className="text-blue-500"/>
-                                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{company.group_name || 'Individual (Sem Grupo)'}</p>
+                                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{company.group_name || 'Individual (Sem Grupo)'}</p>
                                 </div>
                                 <div className="space-y-3 border-t border-slate-50 pt-4 mb-6">
                                     <div className="flex justify-between text-[11px] font-bold uppercase"><span className="text-slate-400 tracking-widest">Documento</span><span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded-md">{company.tax_id}</span></div>
                                     <div className="flex justify-between text-[11px] font-bold uppercase"><span className="text-slate-400 tracking-widest">Regime Fiscal</span><span className="text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md">{company.tax_regime}</span></div>
                                 </div>
-                                <button onClick={() => onSelectCompany(company.id, company.name)} className="w-full py-4 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg"><CheckCircle size={16} className="opacity-50"/> Acessar Painel</button>
+                                <button onClick={() => onSelectCompany(company.id, company.name)} className="w-full py-4 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-2xl font-black text-[9px] uppercase tracking-[0.2em] transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg"><CheckCircle size={16} className="opacity-50"/> Acessar Painel</button>
                             </div>
                         ))}
                         {companies.length === 0 && <div className="col-span-2 text-center py-20 text-slate-300 font-black uppercase tracking-widest italic">Nenhuma empresa cadastrada</div>}
@@ -152,11 +152,11 @@ const Companies = ({ apiBase, onSelectCompany }) => {
 
             {isCompModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <form onSubmit={handleSaveCompany} className="bg-white w-full max-w-lg rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
+                    <form onSubmit={handleSaveCompany} className="bg-white w-full max-w-lg rounded-2xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
                         <div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter">Configurar Unidade</h3><button type="button" onClick={() => setIsCompModalOpen(false)} className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition-all"><X/></button></div>
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">CNPJ Oficial</label>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">CNPJ Oficial</label>
                                 <div className="flex gap-2">
                                     <input type="text" required value={formData.tax_id} onChange={e => setFormData({...formData, tax_id: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-mono font-bold text-slate-700 transition-all"/>
                                     <button type="button" onClick={handleCnpjLookup} disabled={searchingCnpj} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl shadow transition disabled:opacity-50">
@@ -164,11 +164,11 @@ const Companies = ({ apiBase, onSelectCompany }) => {
                                     </button>
                                 </div>
                             </div>
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Razão Social</label><input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome Fantasia (BI)</label><input type="text" value={formData.trade_name} onChange={e => setFormData({...formData, trade_name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
+                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Razão Social</label><input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
+                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome Fantasia (BI)</label><input type="text" value={formData.trade_name} onChange={e => setFormData({...formData, trade_name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Regime Tributário</label><select value={formData.tax_regime} onChange={e => setFormData({...formData, tax_regime: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="SIMPLES">SIMPLES NACIONAL</option><option value="LUCRO_PRESUMIDO">LUCRO PRESUMIDO</option><option value="LUCRO_REAL">LUCRO REAL</option></select></div>
-                                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Grupo Associado</label><select value={formData.group_id} onChange={e => setFormData({...formData, group_id: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="">NENHUM (INDIVIDUAL)</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+                                <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Regime Tributário</label><select value={formData.tax_regime} onChange={e => setFormData({...formData, tax_regime: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="SIMPLES">SIMPLES NACIONAL</option><option value="LUCRO_PRESUMIDO">LUCRO PRESUMIDO</option><option value="LUCRO_REAL">LUCRO REAL</option></select></div>
+                                <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Grupo Associado</label><select value={formData.group_id} onChange={e => setFormData({...formData, group_id: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="">NENHUM (INDIVIDUAL)</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                             </div>
                         </div>
                         <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 mt-4 transition-all hover:bg-blue-700 hover:shadow-2xl active:scale-95">Salvar Dados da Unidade</button>
@@ -178,11 +178,11 @@ const Companies = ({ apiBase, onSelectCompany }) => {
 
             {isGroupModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <form onSubmit={handleSaveGroup} className="bg-white w-full max-w-md rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
+                    <form onSubmit={handleSaveGroup} className="bg-white w-full max-w-md rounded-2xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
                         <div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter">Novo Grupo Corporativo</h3><button type="button" onClick={() => setIsGroupModalOpen(false)} className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition-all"><X/></button></div>
                         <div className="space-y-4">
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome da Holding / Grupo</label><input type="text" required value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all" placeholder="Ex: Grupo XP Soluções"/></div>
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Descrição Estratégica</label><textarea value={groupForm.description} onChange={e => setGroupForm({...groupForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none h-24 resize-none font-medium text-slate-700 transition-all" placeholder="Notas sobre o grupo..."/></div>
+                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome da Holding / Grupo</label><input type="text" required value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all" placeholder="Ex: Grupo XP Soluções"/></div>
+                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Descrição Estratégica</label><textarea value={groupForm.description} onChange={e => setGroupForm({...groupForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none h-24 resize-none font-medium text-slate-700 transition-all" placeholder="Notas sobre o grupo..."/></div>
                         </div>
                         <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl mt-4 hover:bg-black transition-all active:scale-95">Criar Grupo Consolidado</button>
                     </form>

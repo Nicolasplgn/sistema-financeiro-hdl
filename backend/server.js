@@ -1533,6 +1533,7 @@ app.get('/api/audit-logs', async (req, res) => {
 // =================================================================================
 // ROTA: DRE DETALHADA PARA EXPORTAÇÃO
 // =================================================================================
+
 app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
     try {
         const { companyId, year } = req.query;
@@ -1547,14 +1548,15 @@ app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
             ORDER BY ed.type DESC, total_value DESC
         `, [companyId, year]);
         
-        const [taxTotals] = await pool.execute(`
+        const[taxTotals] = await pool.execute(`
             SELECT SUM(tax_icms+tax_difal+tax_iss+tax_pis+tax_cofins+tax_csll+tax_irpj+tax_additional_irpj+tax_fust+tax_funtell) as total_taxes 
             FROM monthly_entries 
             WHERE company_id=? AND YEAR(period_start)=?
-        `, [companyId, year]);
+        `,[companyId, year]);
         
         const reportRows =[];
         
+        // 1. RECEITAS
         reportRows.push({ type: 'S', code: '1', desc: 'RECEITA OPERACIONAL BRUTA', value: 0 });
         let totalRevenue = 0;
         
@@ -1564,9 +1566,15 @@ app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
         });
         reportRows[0].value = totalRevenue;
         
+        // 2. IMPOSTOS
         const totalTaxes = Number(taxTotals[0].total_taxes || 0);
         reportRows.push({ type: 'S', code: '2', desc: '(-) DEDUÇÕES E IMPOSTOS', value: totalTaxes * -1 });
+        
+        // 3. RECEITA LÍQUIDA
         reportRows.push({ type: 'S', code: '3', desc: '(=) RECEITA LÍQUIDA', value: totalRevenue - totalTaxes });
+        
+        // 4. DESPESAS E CUSTOS (CORREÇÃO AQUI: Salva o índice dinâmico em vez de forçar o [3])
+        const expensesIndex = reportRows.length; 
         reportRows.push({ type: 'S', code: '4', desc: '(-) CUSTOS E DESPESAS OPERACIONAIS', value: 0 });
         
         let totalExpenses = 0;
@@ -1574,8 +1582,11 @@ app.get('/api/reports/dre/detailed', authenticateToken, async (req, res) => {
             reportRows.push({ type: 'I', code: '4.1', desc: d.category_name, value: Number(d.total_value) * -1 }); 
             totalExpenses += Number(d.total_value); 
         });
-        reportRows[3].value = totalExpenses * -1;
         
+        // Aplica a soma total exatamente na linha de Custos e Despesas
+        reportRows[expensesIndex].value = totalExpenses * -1;
+        
+        // 5. RESULTADO FINAL
         reportRows.push({ type: 'S', code: '5', desc: '(=) RESULTADO LÍQUIDO DO EXERCÍCIO', value: (totalRevenue - totalTaxes - totalExpenses) });
         
         res.json(reportRows);

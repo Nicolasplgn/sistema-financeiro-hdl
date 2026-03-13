@@ -70,7 +70,7 @@ const ReportTable = ({ reportData, companyName, period }) => {
       </div>
       <div className="overflow-x-auto border border-slate-200 rounded-lg shadow-sm">
         <table className="w-full text-sm text-right bg-white">
-          <thead className="bg-slate-800 text-white uppercase text-[10px] tracking-wider">
+          <thead className="bg-slate-800 text-white uppercase text-[9px] tracking-wider">
             <tr>
               <th className="px-4 py-3 text-left">Mês</th>
               <th className="px-4 py-3 bg-slate-700">Faturamento</th>
@@ -87,16 +87,16 @@ const ReportTable = ({ reportData, companyName, period }) => {
           <tbody>
             {months.map((r) => (
               <tr key={r.monthKey} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-2.5 text-left font-bold text-slate-700">{formatMonth(r.monthKey)}</td>
-                <td className="px-4 py-2.5 font-bold text-slate-800 bg-slate-50/50">{toBRL(r.totalRevenue)}</td>
+                <td className="px-8 py-4.5 text-left font-bold text-slate-700">{formatMonth(r.monthKey)}</td>
+                <td className="px-8 py-4.5 font-bold text-slate-800 bg-slate-50/50">{toBRL(r.totalRevenue)}</td>
                 <td className="px-2 py-2.5 text-xs text-slate-500">{toBRL(r.tax_icms + r.tax_difal)}</td>
                 <td className="px-2 py-2.5 text-xs text-slate-500">{toBRL(r.tax_pis + r.tax_cofins)}</td>
                 <td className="px-2 py-2.5 text-xs text-slate-500">{toBRL(r.tax_iss)}</td>
                 <td className="px-2 py-2.5 text-xs text-slate-500">{toBRL(r.tax_irpj + r.tax_csll + r.tax_additional_irpj)}</td>
                 <td className="px-2 py-2.5 font-bold text-red-600 bg-red-50 border-l border-red-100">{toBRL(r.totalTaxes)}</td>
-                {showPurchases && <td className="px-4 py-2.5 text-red-500">{toBRL(r.totalPurchases)}</td>}
-                {showExpenses && <td className="px-4 py-2.5 text-red-500">{toBRL(r.totalExpenses)}</td>}
-                <td className={`px-4 py-2.5 font-bold border-l-2 ${r.profit >= 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-500' : 'text-red-600 bg-red-50 border-red-500'}`}>{toBRL(r.profit)}</td>
+                {showPurchases && <td className="px-8 py-4.5 text-red-500">{toBRL(r.totalPurchases)}</td>}
+                {showExpenses && <td className="px-8 py-4.5 text-red-500">{toBRL(r.totalExpenses)}</td>}
+                <td className={`px-8 py-4.5 font-bold border-l-2 ${r.profit >= 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-500' : 'text-red-600 bg-red-50 border-red-500'}`}>{toBRL(r.profit)}</td>
               </tr>
             ))}
             <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
@@ -109,13 +109,13 @@ const ReportTable = ({ reportData, companyName, period }) => {
               <td className="px-4 py-3 bg-yellow-200 text-yellow-900 border-l-2 border-yellow-400">{toBRL(summary.totalProfit)}</td>
             </tr>
             <tr className="bg-white text-[11px] text-slate-500 italic border-t border-slate-200">
-              <td className="px-4 py-2 text-left font-semibold">Margem %</td>
-              <td className="px-4 py-2">100%</td>
+              <td className="px-8 py-4 text-left font-semibold">Margem %</td>
+              <td className="px-8 py-4">100%</td>
               <td colSpan="4" className="text-center bg-slate-50/50">---</td>
               <td className="px-2 py-2 font-bold text-red-600 bg-red-50 border-l border-red-100">{toPct(summary.totalTaxes, summary.totalRevenue)}</td>
-              {showPurchases && <td className="px-4 py-2">{toPct(summary.totalPurchases, summary.totalRevenue)}</td>}
-              {showExpenses && <td className="px-4 py-2">{toPct(summary.totalExpenses, summary.totalRevenue)}</td>}
-              <td className="px-4 py-2 font-bold bg-yellow-50 text-slate-800 border-l-2 border-yellow-200">{toPct(summary.totalProfit, summary.totalRevenue)}</td>
+              {showPurchases && <td className="px-8 py-4">{toPct(summary.totalPurchases, summary.totalRevenue)}</td>}
+              {showExpenses && <td className="px-8 py-4">{toPct(summary.totalExpenses, summary.totalRevenue)}</td>}
+              <td className="px-8 py-4 font-bold bg-yellow-50 text-slate-800 border-l-2 border-yellow-200">{toPct(summary.totalProfit, summary.totalRevenue)}</td>
             </tr>
           </tbody>
         </table>

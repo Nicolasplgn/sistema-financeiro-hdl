@@ -68,7 +68,7 @@ const Login = ({ onLogin, apiBase }) => {
             )}
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">E-mail Corporativo</label>
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">E-mail Corporativo</label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                 <input 
@@ -83,7 +83,7 @@ const Login = ({ onLogin, apiBase }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Senha de Acesso</label>
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Senha de Acesso</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                 <input 
@@ -114,7 +114,7 @@ const Login = ({ onLogin, apiBase }) => {
         </div>
         
         <div className="bg-slate-50 p-6 text-center border-t border-slate-100">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© 2026 Vector Connect Enterprises</p>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">© 2026 Vector Connect Enterprises</p>
         </div>
       </div>
     </div>

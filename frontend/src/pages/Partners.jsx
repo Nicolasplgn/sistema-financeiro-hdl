@@ -84,7 +84,7 @@ const Partners = ({ apiBase, selectedCompanyId }) => {
           </h1>
           <p className="text-gray-500 text-sm">Gerencie clientes e fornecedores</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm">
+        <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg flex items-center gap-2 font-medium transition shadow-sm">
           <Plus size={18} /> Novo Parceiro
         </button>
       </div>
@@ -160,7 +160,7 @@ const Partners = ({ apiBase, selectedCompanyId }) => {
                         {searchingCnpj ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <Search size={18}/>}
                     </button>
                  </div>
-                 <p className="text-[10px] text-gray-400 mt-1">* A busca automática funciona apenas para CNPJ.</p>
+                 <p className="text-[9px] text-gray-400 mt-1">* A busca automática funciona apenas para CNPJ.</p>
               </div>
 
               <div>
@@ -181,8 +181,8 @@ const Partners = ({ apiBase, selectedCompanyId }) => {
             </div>
 
             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-2">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium transition">Cancelar</button>
-              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"><Save size={18}/> Salvar</button>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-4 text-gray-600 hover:bg-gray-200 rounded-lg font-medium transition">Cancelar</button>
+              <button type="submit" className="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"><Save size={18}/> Salvar</button>
             </div>
           </form>
         </div>

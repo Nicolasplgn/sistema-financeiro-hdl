@@ -292,26 +292,26 @@ const CostManagement = ({ apiBase, selectedCompanyId }) => {
                     <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full blur-[80px] pointer-events-none"/>
                     <div className="relative z-10 grid grid-cols-1 lg:grid-cols-4 gap-8 items-center">
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Wallet size={14}/> Custo Operacional</p>
-                            <h2 className="text-4xl font-black font-mono tracking-tighter text-white">R$ {totalOperationalCost.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</h2>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Wallet size={14}/> Custo Operacional</p>
+                            <h2 className="text-2xl font-black font-mono tracking-tighter text-white">R$ {totalOperationalCost.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</h2>
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><TrendingUp size={14}/> Faturamento Estimado</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><TrendingUp size={14}/> Faturamento Estimado</p>
                             <div className="flex items-center gap-2 bg-white/10 rounded-2xl p-3 border border-white/10 focus-within:bg-white/20 transition-all">
                                 <span className="text-emerald-400 font-black text-xs">R$</span>
-                                <input type="number" value={projectedRevenue} onChange={(e) => setProjectedRevenue(parseFloat(e.target.value) || 0)} className="bg-transparent text-xl font-bold text-white outline-none w-full font-mono"/>
+                                <input type="number" value={projectedRevenue} onChange={(e) => setProjectedRevenue(parseFloat(e.target.value) || 0)} className="bg-transparent text-sm font-bold text-white outline-none w-full font-mono"/>
                             </div>
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rateio Fixos</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Rateio Fixos</p>
                             <span className="text-3xl font-black text-emerald-400 tracking-tighter">{suggestedFixedRate.toFixed(2)}%</span>
                         </div>
                         <div className="flex flex-col gap-4">
                             <div className="flex justify-between items-end border-b border-white/10 pb-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rateio Pessoal</span>
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Rateio Pessoal</span>
                                 <span className="text-2xl font-black text-emerald-400">{suggestedPayrollRate.toFixed(2)}%</span>
                             </div>
-                            <button onClick={requestApplyRate} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"><RefreshCw size={14}/> Atualizar Todos</button>
+                            <button onClick={requestApplyRate} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"><RefreshCw size={14}/> Atualizar Todos</button>
                         </div>
                     </div>
                 </div>
@@ -366,7 +366,7 @@ const CostManagement = ({ apiBase, selectedCompanyId }) => {
                             
                             <div className="text-center z-10">
                                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight truncate px-2">{block.name}</h3>
-                                <button className="mt-4 w-full py-2.5 bg-slate-50 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                <button className="mt-4 w-full py-2.5 bg-slate-50 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest group-hover:bg-slate-900 group-hover:text-white transition-colors">
                                     Editar Regras
                                 </button>
                             </div>
@@ -384,7 +384,7 @@ const CostManagement = ({ apiBase, selectedCompanyId }) => {
                 
                 <div className={`p-8 pb-6 border-b ${activeTab === 'taxes' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100'}`}>
                     <div className="flex justify-between items-start mb-4">
-                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded bg-white/50 ${activeTab === 'taxes' ? 'text-indigo-600' : 'text-emerald-600'}`}>
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-white/50 ${activeTab === 'taxes' ? 'text-indigo-600' : 'text-emerald-600'}`}>
                             {activeTab === 'taxes' ? 'Regras Fiscais' : 'Estratégia de Preço'}
                         </span>
                         <button onClick={() => setSelectedBlock(null)} className="p-2 hover:bg-white/50 rounded-full transition"><X size={20}/></button>
@@ -447,7 +447,7 @@ const CostManagement = ({ apiBase, selectedCompanyId }) => {
       {/* --- MODAL CRIAR BLOCO --- */}
       {isCreateBlockModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl relative text-center">
+            <div className="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative text-center">
                 <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mb-6 mx-auto"><Box size={32}/></div>
                 <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Novo Bloco</h3>
                 <p className="text-slate-500 text-sm mb-8 font-medium">Crie um agrupador (Ex: B2B PR).</p>

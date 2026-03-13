@@ -35,7 +35,7 @@ const MoneyInput = ({ label, value, onChange, readOnly = false }) => {
 
   return (
     <div className="flex flex-col gap-1.5 group">
-      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] ml-1 group-focus-within:text-blue-600 transition-colors flex items-center gap-1">
+      <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] ml-1 group-focus-within:text-blue-600 transition-colors flex items-center gap-1">
         {label} {readOnly && <Info size={10} className="text-slate-300"/>}
       </label>
       <div className={`relative flex items-center transition-all duration-300 ${readOnly ? 'bg-slate-50/50' : 'bg-white shadow-sm hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500'} border border-slate-200 rounded-xl px-4 py-3`}>
@@ -272,7 +272,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
             <div className="w-1.5 h-8 bg-blue-600 rounded-full"/> Vector Connect Enterprises
           </h1>
-          <p className="text-slate-400 text-sm font-medium mt-1 uppercase tracking-widest text-[10px]">Gestão de Competência Mensal</p>
+          <p className="text-slate-400 text-sm font-medium mt-1 uppercase tracking-widest text-[9px]">Gestão de Competência Mensal</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -310,19 +310,19 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                 {totals.profit >= 0 ? <TrendingUp size={32} /> : <ArrowDownCircle size={32} />}
               </div>
               <div>
-                <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Resultado Líquido (EBITDA)</p>
+                <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Resultado Líquido (EBITDA)</p>
                 <div className="flex items-baseline gap-3">
-                  <h2 className="text-4xl font-black font-mono tracking-tighter italic">{formatCurrency(totals.profit)}</h2>
-                  <div className={`px-3 py-1 rounded-full text-[10px] font-black ${totals.profit >= 0 ? 'bg-emerald-500 text-emerald-950' : 'bg-rose-500 text-rose-950'}`}>
+                  <h2 className="text-2xl font-black font-mono tracking-tighter italic">{formatCurrency(totals.profit)}</h2>
+                  <div className={`px-3 py-1 rounded-full text-[9px] font-black ${totals.profit >= 0 ? 'bg-emerald-500 text-emerald-950' : 'bg-rose-500 text-rose-950'}`}>
                     {totals.margin.toFixed(1)}%
                   </div>
                 </div>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-12 w-full lg:w-auto px-10 lg:border-l border-white/10 text-center lg:text-left">
-              <div><p className="text-slate-500 text-[10px] font-black uppercase italic tracking-widest">Faturamento</p><p className="font-mono text-xl font-bold text-emerald-400 tracking-tight">{formatCurrency(totals.totalRev)}</p></div>
-              <div><p className="text-slate-500 text-[10px] font-black uppercase italic tracking-widest">Tributos</p><p className="font-mono text-xl font-bold text-amber-400 tracking-tight">{formatCurrency(totals.totalTax)}</p></div>
-              <div><p className="text-slate-500 text-[10px] font-black uppercase italic tracking-widest">Despesas</p><p className="font-mono text-xl font-bold text-rose-400 tracking-tight">{formatCurrency(totals.totalCost)}</p></div>
+              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Faturamento</p><p className="font-mono text-sm font-bold text-emerald-400 tracking-tight">{formatCurrency(totals.totalRev)}</p></div>
+              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Tributos</p><p className="font-mono text-sm font-bold text-amber-400 tracking-tight">{formatCurrency(totals.totalTax)}</p></div>
+              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Despesas</p><p className="font-mono text-sm font-bold text-rose-400 tracking-tight">{formatCurrency(totals.totalCost)}</p></div>
             </div>
           </div>
         </motion.div>
@@ -342,13 +342,13 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             {/* MÓDULO DE LANÇAMENTO ANALÍTICO */}
             <div className="bg-slate-900 rounded-[2rem] p-6 shadow-2xl border border-slate-800 relative overflow-hidden">
                 <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-3xl" />
-                <h3 className="font-black text-white text-[10px] mb-6 flex items-center gap-2 uppercase tracking-[0.2em] relative z-10">
+                <h3 className="font-black text-white text-[9px] mb-6 flex items-center gap-2 uppercase tracking-[0.2em] relative z-10">
                     <ListPlus size={14} className="text-blue-400"/> Detalhamento Analítico
                 </h3>
                 
                 <div className="flex gap-2 mb-6 bg-slate-800/50 p-1.5 rounded-2xl border border-white/5 relative z-10">
-                    <button onClick={() => setNewItem({...newItem, type: 'REVENUE'})} className={`flex-1 py-2.5 text-[10px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'REVENUE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-500 hover:text-slate-300'}`}>ENTRADA</button>
-                    <button onClick={() => setNewItem({...newItem, type: 'EXPENSE'})} className={`flex-1 py-2.5 text-[10px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'EXPENSE' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'text-slate-500 hover:text-slate-300'}`}>SAÍDA</button>
+                    <button onClick={() => setNewItem({...newItem, type: 'REVENUE'})} className={`flex-1 py-2.5 text-[9px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'REVENUE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-500 hover:text-slate-300'}`}>ENTRADA</button>
+                    <button onClick={() => setNewItem({...newItem, type: 'EXPENSE'})} className={`flex-1 py-2.5 text-[9px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'EXPENSE' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'text-slate-500 hover:text-slate-300'}`}>SAÍDA</button>
                 </div>
 
                 <div className="space-y-3 relative z-10">
@@ -377,7 +377,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                             className="flex-1 text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600" 
                         />
                         <div className="relative w-28">
-                            <span className="absolute left-3 top-4 text-[10px] font-bold text-slate-500">R$</span>
+                            <span className="absolute left-3 top-4 text-[9px] font-bold text-slate-500">R$</span>
                             <input 
                                 type="number" 
                                 placeholder="0.00" 
@@ -407,7 +407,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                         <div key={item.id || index} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
                             <div className="flex flex-col">
                                 <span className="font-black text-slate-200 text-[9px] uppercase tracking-tighter italic">{categories.find(c => c.id == item.category_id)?.name}</span>
-                                <span className="text-slate-500 text-[10px] font-medium leading-none">{item.description || partners.find(p => p.id == item.partner_id)?.name || 'Geral'}</span>
+                                <span className="text-slate-500 text-[9px] font-medium leading-none">{item.description || partners.find(p => p.id == item.partner_id)?.name || 'Geral'}</span>
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className={`font-mono font-black text-xs ${item.type === 'REVENUE' ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(item.amount)}</span>
@@ -417,7 +417,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                     ))}
                     {details.length === 0 && (
                         <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Nenhum item analítico</p>
+                            <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Nenhum item analítico</p>
                         </div>
                     )}
                 </div>
@@ -446,7 +446,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
           </InputSection>
 
           <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1 group-focus-within:text-blue-600 transition-colors">Notas e Justificativas</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1 group-focus-within:text-blue-600 transition-colors">Notas e Justificativas</label>
             <textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm h-32 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none text-slate-700 font-medium transition-all" placeholder="Informações relevantes para o fechamento..." />
           </div>
 
@@ -463,12 +463,12 @@ const FinancialEntries = ({ companyId, apiBase }) => {
 
       {/* HISTÓRICO CONSOLIDADO */}
       <div className="mt-20">
-        <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 mb-8">
+        <h2 className="text-sm font-black text-slate-800 flex items-center gap-3 mb-8">
           <div className="w-1.5 h-6 bg-slate-300 rounded-full"/> Histórico de Consolidação
         </h2>
         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
               <tr>
                 <th className="px-10 py-5">Período Fiscal</th>
                 <th className="px-10 py-5 text-right">Faturamento Total</th>
@@ -531,20 +531,20 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                     
                     <div className="text-center mb-6">
                         <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Copy size={32}/></div>
-                        <h3 className="text-xl font-black text-slate-900">Clonar Competência</h3>
+                        <h3 className="text-sm font-black text-slate-900">Clonar Competência</h3>
                         <p className="text-xs text-slate-500 font-medium mt-2">Copia todos os lançamentos de um mês para outro.</p>
                     </div>
 
                     <div className="space-y-4">
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem (Copia deste)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem (Copia deste)</label>
                             <input disabled value={currentMonth} className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-500 text-center border-none outline-none"/>
                         </div>
                         
                         <div className="flex justify-center"><ArrowDownCircle className="text-slate-300"/></div>
                         
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino (Cola neste)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino (Cola neste)</label>
                             <input 
                                 type="month" 
                                 value={cloneTarget} 

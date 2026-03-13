@@ -151,7 +151,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3">
             <Tag className="text-blue-600" size={36}/> Simulador de Preços
           </h1>
           <p className="text-slate-400 font-medium text-xs mt-2 uppercase tracking-widest ml-1">
@@ -258,7 +258,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
                         <span className="text-lg font-black text-slate-400 mt-2">R$</span>
                         <input type="number" value={sim.custoIndustrial} onChange={(e) => setSim({...sim, custoIndustrial: parseFloat(e.target.value) || 0})} className="bg-transparent font-black text-5xl text-slate-900 outline-none w-48 text-center"/>
                       </div>
-                      <p className="text-[10px] text-slate-400 italic flex items-center justify-center gap-1"><CheckCircle size={10}/> Recuperado automaticamente do cadastro</p>
+                      <p className="text-[9px] text-slate-400 italic flex items-center justify-center gap-1"><CheckCircle size={10}/> Recuperado automaticamente do cadastro</p>
                     </div>
                   </motion.div>
                 )}
@@ -269,15 +269,15 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
             <div className="lg:col-span-5 space-y-6">
               
               {/* SLIDER DE MARGEM (CARD ESCURO) */}
-              <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden group">
+              <div className="bg-slate-900 rounded-[2.5rem] p-6 text-white shadow-2xl relative overflow-hidden group">
                 <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl group-hover:bg-blue-600/30 transition-all duration-700"/>
                 
                 <div className="relative z-10">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                         <Tag size={14}/> Margem Líquida Alvo
                     </label>
                     <div className="flex items-baseline gap-2 mb-10">
-                        <span className="text-7xl font-black tracking-tighter italic">{sim.margemLucro.toFixed(1)}%</span>
+                        <span className="text-4xl font-black tracking-tighter italic">{sim.margemLucro.toFixed(1)}%</span>
                         <span className="text-sm font-bold text-slate-500">sobre venda</span>
                     </div>
                     <input 
@@ -287,7 +287,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
                         onChange={e => setSim({...sim, margemLucro: parseFloat(e.target.value)})}
                         className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
                     />
-                    <div className="flex justify-between mt-3 text-[10px] font-black text-slate-600 uppercase tracking-widest">
+                    <div className="flex justify-between mt-3 text-[9px] font-black text-slate-600 uppercase tracking-widest">
                         <span>Min 0%</span>
                         <span>Max 60%</span>
                     </div>
@@ -299,20 +299,20 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
                 {results.status === 'erro' ? (
                   <div className="text-center py-10 animate-pulse">
                     <div className="inline-flex p-4 bg-rose-100 text-rose-600 rounded-full mb-4"><AlertCircle size={32}/></div>
-                    <h3 className="text-xl font-black text-rose-700 tracking-tight">Margem Impraticável</h3>
+                    <h3 className="text-sm font-black text-rose-700 tracking-tight">Margem Impraticável</h3>
                     <p className="text-rose-500 text-xs font-bold uppercase tracking-widest mt-2">Deduções ultrapassam 100%.</p>
                   </div>
                 ) : (
                   <>
                     <div className="text-center mb-8">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Preço Sugerido de Venda</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Preço Sugerido de Venda</p>
                         <h2 className="text-5xl font-black text-slate-900 tracking-tighter mb-4">
                             {results.precoVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </h2>
-                        <div className="inline-flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Divisor: <span className="text-blue-600">{results.divisor.toFixed(4)}</span></span>
+                        <div className="inline-flex items-center gap-3 bg-slate-50 px-8 py-4 rounded-xl">
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Divisor: <span className="text-blue-600">{results.divisor.toFixed(4)}</span></span>
                             <div className="w-px h-3 bg-slate-200"></div>
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deduções: <span className="text-rose-500">{results.totalDeducoesPerc.toFixed(2)}%</span></span>
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Deduções: <span className="text-rose-500">{results.totalDeducoesPerc.toFixed(2)}%</span></span>
                         </div>
                     </div>
 
@@ -340,9 +340,9 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
 
       {/* LOADER INICIAL DE DADOS DO PRODUTO */}
       {fetchingBase && (
-        <div className="h-60 flex flex-col items-center justify-center text-blue-600 bg-white/50 backdrop-blur-sm rounded-[3rem] mt-8 border border-white/20 shadow-xl">
+        <div className="h-60 flex flex-col items-center justify-center text-blue-600 bg-white/50 backdrop-blur-sm rounded-2xl mt-8 border border-white/20 shadow-xl">
             <Loader2 size={40} className="animate-spin mb-4"/>
-            <p className="font-black uppercase tracking-widest text-[10px]">Carregando Ficha Técnica...</p>
+            <p className="font-black uppercase tracking-widest text-[9px]">Carregando Ficha Técnica...</p>
         </div>
       )}
     </div>

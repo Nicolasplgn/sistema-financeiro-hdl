@@ -78,7 +78,7 @@ const Sidebar = ({ user, activeTab, setActiveTab, isCollapsed, setIsCollapsed, o
                     <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-xl shadow-blue-600/30 transform rotate-3">V</div>
                     {!isCollapsed && (
                         <div className="flex flex-col">
-                            <span className="text-white font-black text-xl tracking-tighter leading-none">VECTOR</span>
+                            <span className="text-white font-black text-sm tracking-tighter leading-none">VECTOR</span>
                             <span className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mt-1">Enterprise</span>
                         </div>
                     )}
@@ -94,7 +94,7 @@ const Sidebar = ({ user, activeTab, setActiveTab, isCollapsed, setIsCollapsed, o
                     if (group.role && user?.role !== group.role) return null;
                     return (
                         <div key={idx}>
-                            {!isCollapsed && <p className="px-4 text-[10px] font-black text-rose-500 uppercase tracking-[0.2em] mb-2 animate-in fade-in slide-in-from-left-2">{group.section}</p>}
+                            {!isCollapsed && <p className="px-4 text-[9px] font-black text-rose-500 uppercase tracking-[0.2em] mb-2 animate-in fade-in slide-in-from-left-2">{group.section}</p>}
                             <div className="space-y-1">
                                 {group.items.map(item => {
                                     const isActive = activeTab === item.id;
@@ -263,7 +263,7 @@ const App = () => {
                <div className="p-3 bg-slate-900 rounded-2xl text-white shadow-xl transition-all hover:scale-105">
                   <LayoutDashboard size={22}/>
                </div>
-               <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase italic hidden md:block">
+               <h2 className="text-sm font-black text-slate-900 tracking-tight uppercase italic hidden md:block">
                   {activeTab === 'costs' ? 'Gestão Financeira' : activeTab.replace('_', ' ')}
                </h2>
             </div>
@@ -281,7 +281,7 @@ const App = () => {
                       const found = type === 'group' ? groups.find(g => g.id === Number(id)) : companies.find(c => c.id === Number(id));
                       setSelectedEntity({ type, id: Number(id), name: found?.trade_name || found?.name });
                     }}
-                    className="bg-transparent border-none text-slate-700 font-black text-xs outline-none px-4 py-2 cursor-pointer uppercase tracking-widest min-w-[200px]"
+                    className="bg-transparent border-none text-slate-700 font-black text-xs outline-none px-8 py-4 cursor-pointer uppercase tracking-widest min-w-[200px]"
                  >
                     <option value="">SELECIONE UNIDADE</option>
                     <optgroup label="EMPRESAS">
@@ -307,7 +307,7 @@ const App = () => {
                 <AdminPanel apiBase={API_BASE} onImpersonate={handleImpersonate} />
             ) : (
                 !selectedEntity.id && activeTab !== 'companies' && activeTab !== 'audit' ? (
-                    <div className="h-full flex flex-col items-center justify-center p-12 animate-in fade-in zoom-in duration-500">
+                    <div className="h-full flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
                         <div className="w-24 h-24 bg-slate-100 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner"><Building2 size={48} className="text-slate-300" /></div>
                         <h2 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter">Seleção de Escopo Necessária</h2>
                         <p className="text-slate-500 mb-10 text-center font-medium leading-relaxed max-w-sm">Para visualizar algoritmos e dados, conecte-se a uma de suas empresas ou grupos cadastrados.</p>

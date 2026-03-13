@@ -55,7 +55,7 @@ const MainLayout = ({ user, onLogout, selectedEntity, onSelectEntity, companies,
         {/* Logo Area (Fixo no topo da Sidebar) */}
         <div className="h-24 flex items-center justify-center border-b border-white/5 relative shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-900/50 shrink-0">V</div>
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-lg shadow-blue-900/50 shrink-0">V</div>
             {!collapsed && (
               <div className="whitespace-nowrap">
                 <h1 className="text-white font-black text-lg tracking-tight">VECTOR</h1>
@@ -80,7 +80,7 @@ const MainLayout = ({ user, onLogout, selectedEntity, onSelectEntity, companies,
             return (
               <div key={idx}>
                 {!collapsed && (
-                  <p className="px-3 text-[10px] font-black text-rose-500/80 uppercase tracking-[0.2em] mb-3 animate-in fade-in slide-in-from-left-2 duration-300">
+                  <p className="px-3 text-[9px] font-black text-rose-500/80 uppercase tracking-[0.2em] mb-3 animate-in fade-in slide-in-from-left-2 duration-300">
                     {group.section}
                   </p>
                 )}

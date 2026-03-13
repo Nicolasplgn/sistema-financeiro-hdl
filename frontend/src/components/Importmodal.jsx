@@ -158,7 +158,7 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
                         {/* Header */}
                         <div className="flex justify-between items-center px-10 pt-10 pb-6 border-b border-slate-50 shrink-0">
                             <div>
-                                <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1 flex items-center gap-2">
+                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1 flex items-center gap-2">
                                     <UploadCloud size={12} /> Importação de Dados
                                 </p>
                                 <h3 className="text-2xl font-black text-slate-900 tracking-tighter italic">Importar para o BI</h3>
@@ -181,7 +181,7 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
                                     {/* Resumo se tiver logs */}
                                     {importedLogs.length > 0 && (
                                         <div className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-5 pt-4 pb-2">Meses Processados ({importedLogs.length})</p>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-5 pt-4 pb-2">Meses Processados ({importedLogs.length})</p>
                                             <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
                                                 {importedLogs.map((log, i) => (
                                                     <div key={i} className="flex justify-between items-center px-5 py-3 bg-white">
@@ -338,7 +338,7 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
                                         
                                         <button 
                                             onClick={addBatchItem}
-                                            className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[10px] uppercase tracking-widest hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
+                                            className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[9px] uppercase tracking-widest hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
                                         >
                                             <Plus size={16} /> Adicionar Mês
                                         </button>

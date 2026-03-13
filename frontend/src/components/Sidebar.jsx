@@ -49,7 +49,7 @@ const Sidebar = ({ onLogout, isCollapsed, toggleSidebar }) => {
           if (item.isHeader) {
             return !isCollapsed && (
               <div key={index} className="px-3 mt-6 mb-2">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                   {item.label}
                 </p>
               </div>

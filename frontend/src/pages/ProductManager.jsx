@@ -87,22 +87,22 @@ const ProductManager = ({ apiBase, selectedCompanyId }) => {
                 </h3>
                 {activeTab === 'materials' ? (
                     <form onSubmit={handleSaveMaterial} className="space-y-4">
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nome</label><input required type="text" value={matForm.name} onChange={e => setMatForm({...matForm, name: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none" placeholder="Ex: Pedal"/></div>
+                        <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Nome</label><input required type="text" value={matForm.name} onChange={e => setMatForm({...matForm, name: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none" placeholder="Ex: Pedal"/></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">NCM</label><input type="text" value={matForm.ncm} onChange={e => setMatForm({...matForm, ncm: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-mono font-bold" placeholder="0000.00"/></div>
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">IPI %</label><input type="number" step="0.01" value={matForm.ipi_percent} onChange={e => setMatForm({...matForm, ipi_percent: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold" placeholder="0.00"/></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">NCM</label><input type="text" value={matForm.ncm} onChange={e => setMatForm({...matForm, ncm: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-mono font-bold" placeholder="0000.00"/></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">IPI %</label><input type="number" step="0.01" value={matForm.ipi_percent} onChange={e => setMatForm({...matForm, ipi_percent: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold" placeholder="0.00"/></div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">R$ Nacional</label><input type="number" step="0.01" value={matForm.price_national} onChange={e => setMatForm({...matForm, price_national: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-emerald-600" placeholder="0.00"/></div>
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">R$ Imp.</label><input type="number" step="0.01" value={matForm.price_imported} onChange={e => setMatForm({...matForm, price_imported: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-blue-600" placeholder="0.00"/></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">R$ Nacional</label><input type="number" step="0.01" value={matForm.price_national} onChange={e => setMatForm({...matForm, price_national: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-emerald-600" placeholder="0.00"/></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">R$ Imp.</label><input type="number" step="0.01" value={matForm.price_imported} onChange={e => setMatForm({...matForm, price_imported: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-blue-600" placeholder="0.00"/></div>
                         </div>
                         <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl"><input type="checkbox" checked={matForm.is_national} onChange={e => setMatForm({...matForm, is_national: e.target.checked})} className="w-5 h-5 accent-blue-600 rounded cursor-pointer"/><span className="text-xs font-bold text-slate-500">Origem Nacional?</span></div>
                         <button type="submit" className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2"><Save size={16}/> Salvar</button>
                     </form>
                 ) : (
                     <form onSubmit={handleSaveProduct} className="space-y-4">
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nome da Bike</label><input required type="text" value={prodForm.name} onChange={e => setProdForm({...prodForm, name: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none" placeholder="Ex: Bike MTB"/></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">SKU</label><input type="text" value={prodForm.sku} onChange={e => setProdForm({...prodForm, sku: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-mono font-bold" placeholder="COD-001"/></div>
+                        <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Nome da Bike</label><input required type="text" value={prodForm.name} onChange={e => setProdForm({...prodForm, name: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none" placeholder="Ex: Bike MTB"/></div>
+                        <div><label className="text-[9px] font-bold text-slate-400 uppercase ml-2">SKU</label><input type="text" value={prodForm.sku} onChange={e => setProdForm({...prodForm, sku: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl p-3 font-mono font-bold" placeholder="COD-001"/></div>
                         <button type="submit" className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2"><Save size={16}/> Salvar</button>
                     </form>
                 )}
@@ -111,11 +111,11 @@ const ProductManager = ({ apiBase, selectedCompanyId }) => {
         <div className="lg:col-span-2">
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-                    <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Cadastrados</h3>
-                    <span className="text-[10px] font-bold text-slate-300">{list.length} itens</span>
+                    <h3 className="font-black text-slate-400 text-[9px] uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Cadastrados</h3>
+                    <span className="text-[9px] font-bold text-slate-300">{list.length} itens</span>
                 </div>
                 <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-                    {loading ? <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-slate-300"/></div> : list.length === 0 ? <div className="p-10 text-center text-slate-300 text-xs font-bold uppercase">Vazio</div> : (
+                    {loading ? <div className="p-6 flex justify-center"><Loader2 className="animate-spin text-slate-300"/></div> : list.length === 0 ? <div className="p-6 text-center text-slate-300 text-xs font-bold uppercase">Vazio</div> : (
                         <table className="w-full text-left">
                             <tbody className="divide-y divide-slate-50">
                                 {list.map((item) => (

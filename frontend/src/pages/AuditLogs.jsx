@@ -75,7 +75,7 @@ const AuditLogs = ({ apiBase }) => {
             </h1>
             <p className="text-gray-500 text-sm mt-1">Monitore todas as ações realizadas no sistema.</p>
           </div>
-          <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 px-4 py-2 rounded-lg transition">
+          <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 px-8 py-4 rounded-lg transition">
             {isExpanded ? <><MinusCircle size={16}/> Minimizar Lista</> : <><ChevronDown size={16}/> Expandir Lista</>}
           </button>
         </div>
@@ -83,16 +83,16 @@ const AuditLogs = ({ apiBase }) => {
         {/* Filtros */}
         <div className="flex flex-col md:flex-row gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="flex-1 w-full relative">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Buscar Texto</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Buscar Texto</label>
                 <Search className="absolute left-3 top-8 text-gray-400" size={16} />
                 <input type="text" placeholder="Usuário, ação ou detalhe..." className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
             </div>
             <div className="w-full md:w-auto">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">De</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">De</label>
                 <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-purple-500"/>
             </div>
             <div className="w-full md:w-auto">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Até</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Até</label>
                 <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-purple-500"/>
             </div>
             <button onClick={fetchLogs} className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition shadow-md shadow-purple-200 font-medium text-sm h-[38px]">
@@ -105,16 +105,16 @@ const AuditLogs = ({ apiBase }) => {
         {isExpanded && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-6">
             {Object.keys(groupedLogs).length === 0 ? (
-                <div className="text-center p-12 bg-white rounded-2xl border border-slate-100 text-slate-400">
+                <div className="text-center p-6 bg-white rounded-2xl border border-slate-100 text-slate-400">
                     Nenhum registro encontrado para este período.
                 </div>
             ) : (
                 Object.keys(groupedLogs).map((dateKey) => (
                     <div key={dateKey} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center gap-2">
+                        <div className="bg-gray-50 px-8 py-4 border-b border-gray-200 flex items-center gap-2">
                             <Calendar size={14} className="text-gray-400"/>
                             <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{dateKey}</span>
-                            <span className="text-[10px] bg-gray-200 text-gray-500 px-2 rounded-full">{groupedLogs[dateKey].length} ações</span>
+                            <span className="text-[9px] bg-gray-200 text-gray-500 px-2 rounded-full">{groupedLogs[dateKey].length} ações</span>
                         </div>
                         <div className="divide-y divide-gray-100">
                             {groupedLogs[dateKey].map((log) => (
@@ -129,7 +129,7 @@ const AuditLogs = ({ apiBase }) => {
                                         </div>
                                     </div>
                                     <div className="min-w-[140px]">
-                                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide ${getActionStyle(log.action)}`}>
+                                        <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-bold border uppercase tracking-wide ${getActionStyle(log.action)}`}>
                                             {log.action}
                                         </span>
                                     </div>

@@ -159,7 +159,7 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center text-slate-400 bg-white rounded-[2.5rem] border border-slate-100 m-4 shadow-sm animate-in fade-in zoom-in duration-500">
         <div className="p-6 bg-slate-50 rounded-full mb-4 animate-pulse"><FileText size={48} className="opacity-20"/></div>
-        <p className="font-black uppercase tracking-[0.2em] text-[10px]">Aguardando seleção de empresa</p>
+        <p className="font-black uppercase tracking-[0.2em] text-[9px]">Aguardando seleção de empresa</p>
       </div>
     );
   }
@@ -170,10 +170,10 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
         <div>
-          <div className="flex items-center gap-2 text-emerald-600 font-black text-[10px] tracking-[0.2em] uppercase mb-1">
+          <div className="flex items-center gap-2 text-emerald-600 font-black text-[9px] tracking-[0.2em] uppercase mb-1">
             <div className="w-8 h-1 bg-emerald-500 rounded-full" /> Financial Report
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tighter">
             DRE <span className="text-slate-300 font-light italic">Gerencial</span>
           </h1>
           <p className="text-slate-400 text-sm font-medium">Análise de performance contábil do exercício de {year}</p>
@@ -212,7 +212,7 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
         {loading ? (
           <div className="p-32 text-center text-slate-400 flex flex-col items-center gap-6 animate-pulse">
              <div className="w-12 h-12 border-4 border-slate-100 border-t-emerald-500 rounded-full animate-spin"></div>
-             <p className="font-black text-[10px] uppercase tracking-widest">Calculando Resultados...</p>
+             <p className="font-black text-[9px] uppercase tracking-widest">Calculando Resultados...</p>
           </div>
         ) : (
           <div className="overflow-x-auto custom-scrollbar pb-6">
@@ -220,18 +220,18 @@ const DRE = ({ apiBase, selectedCompanyId }) => {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   {/* COLUNA FIXA (STICKY) */}
-                  <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-slate-50 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] w-80 border-r border-slate-200">
+                  <th className="p-6 text-[9px] font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-slate-50 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] w-80 border-r border-slate-200">
                     Estrutura de Contas
                   </th>
                   {Array.from({ length: 12 }).map((_, i) => (
-                    <th key={i} className="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[130px]">
+                    <th key={i} className="p-6 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest min-w-[130px]">
                         {new Date(0, i).toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase()}.
                     </th>
                   ))}
-                  <th className="p-6 text-right text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-100/50 border-l border-slate-200 min-w-[160px]">
+                  <th className="p-6 text-right text-[9px] font-black text-slate-900 uppercase tracking-widest bg-slate-100/50 border-l border-slate-200 min-w-[160px]">
                     Total Ano
                   </th>
-                  <th className="p-6 text-right text-[10px] font-black text-blue-600 uppercase tracking-widest min-w-[90px]">
+                  <th className="p-6 text-right text-[9px] font-black text-blue-600 uppercase tracking-widest min-w-[90px]">
                     AV %
                   </th>
                 </tr>

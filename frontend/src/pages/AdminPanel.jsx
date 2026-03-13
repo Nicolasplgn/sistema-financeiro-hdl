@@ -76,12 +76,12 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
   );
 
   return (
-    <div className="p-10 max-w-7xl mx-auto animate-in fade-in duration-700 pb-32">
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-700 pb-32">
       
       {/* HEADER */}
       <div className="flex justify-between items-end mb-10">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
             <ShieldAlert className="text-rose-600" size={40}/> Vector Control Center
           </h1>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2 ml-1">Gestão de Licenças e Clientes</p>
@@ -89,7 +89,7 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
         <div className="flex gap-4">
            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
               <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Users size={20}/></div>
-              <div><p className="text-[10px] font-black uppercase text-slate-400">Total Clientes</p><p className="text-xl font-black text-slate-800">{users.length}</p></div>
+              <div><p className="text-[9px] font-black uppercase text-slate-400">Total Clientes</p><p className="text-sm font-black text-slate-800">{users.length}</p></div>
            </div>
            <button onClick={() => setIsCreateModalOpen(true)} className="bg-slate-900 hover:bg-black text-white px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 transition hover:-translate-y-1">
              <UserPlus size={18}/> Novo Cliente
@@ -118,7 +118,7 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
                                 <div><p className="font-bold text-slate-800">{u.full_name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
                             </div>
                         </td>
-                        <td className="p-6"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${u.role === 'SUPER_ADMIN' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span></td>
+                        <td className="p-6"><span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide ${u.role === 'SUPER_ADMIN' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span></td>
                         <td className="p-6 text-center">
                             {u.role === 'SUPER_ADMIN' ? (
                                 <div className="flex items-center justify-center gap-2 text-emerald-600 font-black text-xs uppercase tracking-widest">
@@ -142,7 +142,7 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
                             <div className="flex justify-end gap-2">
                                 <button onClick={() => { setEditUser(u); setIsEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 transition bg-slate-50 rounded-lg hover:bg-blue-50" title="Editar Licenças"><Edit3 size={16}/></button>
                                 {u.role !== 'SUPER_ADMIN' && (
-                                    <button onClick={() => handleImpersonate(u)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 transition hover:-translate-y-1"><LogIn size={14}/> Entrar</button>
+                                    <button onClick={() => handleImpersonate(u)} className="flex items-center gap-2 px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 transition hover:-translate-y-1"><LogIn size={14}/> Entrar</button>
                                 )}
                                 <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-300 hover:text-rose-500 transition rounded-lg hover:bg-rose-50"><Trash2 size={18}/></button>
                             </div>
@@ -156,23 +156,23 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
       {/* MODAL CRIAR */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl relative">
+            <div className="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
                 <button onClick={() => setIsCreateModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Novo Cliente</h3>
                 <form onSubmit={handleCreateUser} className="space-y-4">
-                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome Completo</label><input required className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.full_name} onChange={e => setNewUser({...newUser, full_name: e.target.value})}/></div>
-                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">E-mail de Acesso</label><input required type="email" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})}/></div>
-                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Senha Provisória</label><input required type="text" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})}/></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome Completo</label><input required className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.full_name} onChange={e => setNewUser({...newUser, full_name: e.target.value})}/></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">E-mail de Acesso</label><input required type="email" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})}/></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Senha Provisória</label><input required type="text" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})}/></div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perfil</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Perfil</label>
                             <select className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                                 <option value="ADMIN">Cliente</option>
                                 <option value="SUPER_ADMIN">Admin Vector</option>
                             </select>
                         </div>
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Licenças (Unidades)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Licenças (Unidades)</label>
                             <input type="number" min="1" disabled={newUser.role === 'SUPER_ADMIN'} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none disabled:opacity-50" value={newUser.role === 'SUPER_ADMIN' ? 9999 : newUser.max_companies} onChange={e => setNewUser({...newUser, max_companies: e.target.value})}/>
                         </div>
                     </div>
@@ -185,21 +185,21 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
       {/* MODAL EDITAR (Onde você libera ou tira licenças) */}
       {isEditModalOpen && editUser && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl relative">
+            <div className="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
                 <button onClick={() => setIsEditModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
                 <div className="mb-6 text-center">
                     <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 font-black text-2xl uppercase shadow-lg">
                         {editUser.full_name.charAt(0)}
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">{editUser.full_name}</h3>
+                    <h3 className="text-sm font-black text-slate-900">{editUser.full_name}</h3>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{editUser.role}</p>
                 </div>
                 
                 <form onSubmit={handleUpdateUser} className="space-y-6">
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 text-center">Limite de Licenças (Unidades)</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 text-center">Limite de Licenças (Unidades)</label>
                         <div className="flex items-center justify-center gap-4">
-                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: Math.max(1, parseInt(editUser.max_companies) - 1)})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center font-black text-xl transition">-</button>
+                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: Math.max(1, parseInt(editUser.max_companies) - 1)})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center font-black text-sm transition">-</button>
                             <input 
                                 type="number" 
                                 min="1" 
@@ -207,12 +207,12 @@ const AdminPanel = ({ apiBase, onImpersonate }) => {
                                 value={editUser.max_companies} 
                                 onChange={e => setEditUser({...editUser, max_companies: e.target.value})}
                             />
-                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: parseInt(editUser.max_companies) + 1})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 flex items-center justify-center font-black text-xl transition">+</button>
+                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: parseInt(editUser.max_companies) + 1})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 flex items-center justify-center font-black text-sm transition">+</button>
                         </div>
                     </div>
                     
                     <div className="pt-4 border-t border-slate-100">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Alterar Senha (Opcional)</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Alterar Senha (Opcional)</label>
                         <input type="text" placeholder="Nova senha..." className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition" onChange={e => setEditUser({...editUser, password: e.target.value})}/>
                     </div>
 
