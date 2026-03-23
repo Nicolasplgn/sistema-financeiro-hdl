@@ -550,14 +550,24 @@ const initDb = async () => {
             )
         `);
         
-        await conn.execute(`
-            CREATE TABLE IF NOT EXISTS categories (
-                id INT AUTO_INCREMENT PRIMARY KEY, 
-                name VARCHAR(150), 
-                type ENUM('REVENUE','EXPENSE'), 
-                questor_account_code VARCHAR(50)
-            )
-        `);
+    // DEPOIS (com UNIQUE KEY que previne duplicatas):
+await conn.execute(`
+    CREATE TABLE IF NOT EXISTS categories (
+        id INT AUTO_INCREMENT PRIMARY KEY, 
+        name VARCHAR(150), 
+        type ENUM('REVENUE','EXPENSE'), 
+        questor_account_code VARCHAR(50),
+        UNIQUE KEY uq_category_name_type (name, type)
+    )
+`);
+
+// Tenta adicionar a constraint em bancos já existentes (não falha se já existir)
+try {
+    await conn.execute(`
+        ALTER TABLE categories 
+        ADD UNIQUE KEY uq_category_name_type (name, type)
+    `);
+} catch(e) { /* constraint já existe, ignora */ }
         
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS budget_goals (

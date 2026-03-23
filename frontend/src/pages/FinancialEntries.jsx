@@ -257,6 +257,17 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       if (isNaN(num)) return 'R$ 0,00';
       return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
+
+  // ADICIONE ISSO — deduplica categorias pelo nome+tipo antes de renderizar
+const uniqueCategories = useMemo(() => {
+  const seen = new Set();
+  return categories.filter(c => {
+      const key = `${c.name}|${c.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+  });
+}, [categories]);
   
   const filteredPartners = partners.filter(p => newItem.type === 'REVENUE' ? (p.type === 'CLIENT' || p.type === 'BOTH') : (p.type === 'SUPPLIER' || p.type === 'BOTH'));
 
@@ -355,7 +366,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                     <div className="relative">
                         <select value={newItem.category_id} onChange={e => setNewItem({...newItem, category_id: e.target.value})} className="w-full text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer">
                             <option value="" disabled hidden>Classificação Contábil...</option>
-                            {categories.filter(c => c.type === newItem.type).map(c => <option key={c.id} value={c.id} className="bg-slate-900 uppercase tracking-widest">{c.name}</option>)}
+                            {uniqueCategories.filter(c => c.type === newItem.type).map(c => <option key={c.id} value={c.id} className="bg-slate-900 uppercase tracking-widest">{c.name}</option>)}
                         </select>
                         <ChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
                     </div>

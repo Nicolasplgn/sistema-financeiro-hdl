@@ -248,11 +248,24 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
   const openTable = (type, title, dataType = 'REVENUE') => {
     if (!reportData) return;
     let dataToShow = null;
-    if (type === 'TAXES') dataToShow = reportData.summary;
-    else if (type === 'CATEGORIES') dataToShow = reportData.categories || [];
-    else if (type === 'EVOLUTION') dataToShow = reportData.months || [];
+
+    if (type === 'TAXES') {
+        // Agrega os impostos mês a mês somando cada campo individualmente
+        dataToShow = reportData.months.reduce((acc, m) => ({
+            tax_icms:      (acc.tax_icms      || 0) + Number(m.tax_icms      || 0),
+            tax_pis:       (acc.tax_pis       || 0) + Number(m.tax_pis       || 0),
+            tax_cofins:    (acc.tax_cofins     || 0) + Number(m.tax_cofins    || 0),
+            tax_iss:       (acc.tax_iss        || 0) + Number(m.tax_iss       || 0),
+            tax_irpj_csll: (acc.tax_irpj_csll  || 0) + Number(m.tax_irpj_csll || 0),
+        }), {});
+    } else if (type === 'CATEGORIES') {
+        dataToShow = reportData.categories || [];
+    } else if (type === 'EVOLUTION') {
+        dataToShow = reportData.months || [];
+    }
+
     setDetailModal({ open: true, type: type, title: title, data: dataToShow, dataType: dataType });
-  };
+};
 
   useEffect(() => {
     if (!companyId && !groupId) return;
