@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   LayoutDashboard, DollarSign, Building2, ChevronLeft, ChevronRight, LogOut, Users, ShieldAlert,
@@ -21,6 +21,9 @@ import PricingSimulator from './pages/PricingSimulator';
 import ProductManager from './pages/ProductManager';
 import CostManagement from './pages/CostManagement';
 import AdminPanel from './pages/AdminPanel';
+
+// Hook de Tema
+import { useTheme } from './hooks/useTheme';
 
 // Configuração da API
 const API_BASE = `http://${window.location.hostname}:4000`;
@@ -45,7 +48,6 @@ const GroupRestriction = ({ moduleName }) => (
 
 // --- COMPONENTE SIDEBAR ISOLADO (Para preservar scroll) ---
 const Sidebar = ({ user, activeTab, setActiveTab, isCollapsed, setIsCollapsed, onLogout }) => {
-    // Menu Config
     const menuItems = [
         { section: 'Master Control', role: 'SUPER_ADMIN', items: [
             { id: 'admin_panel', icon: ShieldAlert, label: 'Central de Clientes', color: 'text-rose-500' }
@@ -140,6 +142,9 @@ const Sidebar = ({ user, activeTab, setActiveTab, isCollapsed, setIsCollapsed, o
 };
 
 const App = () => {
+  // --- TEMA ---
+  const { isDark, toggleTheme } = useTheme();
+
   // --- ESTADOS ---
   const [user, setUser] = useState(() => {
     try {
@@ -156,7 +161,6 @@ const App = () => {
   });
 
   const [activeTab, setActiveTab] = useState(() => {
-     // Recupera a última aba acessada ou define padrão
      const savedTab = localStorage.getItem('vector_active_tab');
      if (savedTab) return savedTab;
      return (user && user.role === 'SUPER_ADMIN') ? 'admin_panel' : 'dashboard';
@@ -171,24 +175,20 @@ const App = () => {
 
   // --- EFEITOS ---
   
-  // Salvar aba ativa
   useEffect(() => {
       if (user) localStorage.setItem('vector_active_tab', activeTab);
   }, [activeTab, user]);
 
-  // Salvar estado da sidebar
   useEffect(() => {
       localStorage.setItem('vector_sidebar_collapsed', isSidebarCollapsed);
   }, [isSidebarCollapsed]);
 
-  // Configuração Axios
   useEffect(() => {
     const token = localStorage.getItem('hdl_token');
     if (token) axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     else delete axios.defaults.headers.common['Authorization'];
   }, [user]);
 
-  // Carregar dados iniciais
   useEffect(() => {
     if (user) {
         axios.get(`${API_BASE}/api/companies`)
@@ -205,7 +205,6 @@ const App = () => {
     }
   }, [user]);
 
-  // Persistir entidade selecionada
   useEffect(() => {
     if (selectedEntity.id) localStorage.setItem('vector_entity', JSON.stringify(selectedEntity));
     else localStorage.removeItem('vector_entity');
@@ -236,14 +235,14 @@ const App = () => {
     window.location.reload();
   };
 
-  // Se não estiver logado
   if (!user) return <Login onLogin={handleLogin} apiBase={API_BASE} />;
 
-  // Renderização Principal (Layout Fixo)
   return (
-    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 selection:bg-blue-100 overflow-hidden">
+    <div className="flex h-screen font-sans selection:bg-blue-100 overflow-hidden"
+      style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}
+    >
       
-      {/* SIDEBAR - Componente Estático (Não recria ao mudar activeTab) */}
+      {/* SIDEBAR */}
       <Sidebar 
           user={user} 
           activeTab={activeTab} 
@@ -256,20 +255,62 @@ const App = () => {
       {/* ÁREA PRINCIPAL */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-500 ease-in-out">
         
-        {/* Header Superior (Fixo) */}
+        {/* Header Superior */}
         {activeTab !== 'admin_panel' && (
-          <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-40 px-10 flex items-center justify-between shadow-sm shrink-0">
+          <header
+            className="h-24 backdrop-blur-xl border-b sticky top-0 z-40 px-10 flex items-center justify-between shadow-sm shrink-0 transition-colors"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+          >
             <div className="flex items-center gap-4">
                <div className="p-3 bg-slate-900 rounded-2xl text-white shadow-xl transition-all hover:scale-105">
                   <LayoutDashboard size={22}/>
                </div>
-               <h2 className="text-sm font-black text-slate-900 tracking-tight uppercase italic hidden md:block">
+               <h2 className="text-sm font-black tracking-tight uppercase italic hidden md:block"
+                 style={{ color: 'var(--text-primary)' }}
+               >
                   {activeTab === 'costs' ? 'Gestão Financeira' : activeTab.replace('_', ' ')}
                </h2>
             </div>
             
             <div className="flex items-center gap-4">
-              <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner group focus-within:ring-2 focus-within:ring-blue-500/20 transition-all hover:border-blue-300">
+
+              {/* BOTÃO TOGGLE DE TEMA */}
+              <button
+                onClick={toggleTheme}
+                title={isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className="p-3 rounded-2xl border transition-all shadow-sm hover:scale-105 active:scale-95"
+                style={{
+                  background: 'var(--bg-card)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {isDark ? (
+                  // Ícone Sol
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                  </svg>
+                ) : (
+                  // Ícone Lua
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                )}
+              </button>
+
+              {/* SELECT DE EMPRESA */}
+              <div
+                className="flex items-center p-1.5 rounded-2xl border shadow-inner group focus-within:ring-2 focus-within:ring-blue-500/20 transition-all hover:border-blue-300"
+                style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}
+              >
                  <div className="p-2 bg-slate-900 text-white rounded-xl shadow-lg">
                     {selectedEntity.type === 'group' ? <Layers size={16}/> : <Building2 size={16}/>}
                  </div>
@@ -281,7 +322,8 @@ const App = () => {
                       const found = type === 'group' ? groups.find(g => g.id === Number(id)) : companies.find(c => c.id === Number(id));
                       setSelectedEntity({ type, id: Number(id), name: found?.trade_name || found?.name });
                     }}
-                    className="bg-transparent border-none text-slate-700 font-black text-xs outline-none px-8 py-4 cursor-pointer uppercase tracking-widest min-w-[200px]"
+                    className="bg-transparent border-none font-black text-xs outline-none px-8 py-4 cursor-pointer uppercase tracking-widest min-w-[200px]"
+                    style={{ color: 'var(--text-primary)' }}
                  >
                     <option value="">SELECIONE UNIDADE</option>
                     <optgroup label="EMPRESAS">
@@ -301,16 +343,19 @@ const App = () => {
           </header>
         )}
 
-        {/* Conteúdo Dinâmico (Com Scroll Suave e Independente) */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-0 scroll-smooth custom-scrollbar bg-[#F8FAFC]">
+        {/* Conteúdo Dinâmico */}
+        <div
+          className="flex-1 overflow-y-auto overflow-x-hidden p-0 scroll-smooth custom-scrollbar transition-colors"
+          style={{ background: 'var(--bg-base)' }}
+        >
             {activeTab === 'admin_panel' ? (
                 <AdminPanel apiBase={API_BASE} onImpersonate={handleImpersonate} />
             ) : (
                 !selectedEntity.id && activeTab !== 'companies' && activeTab !== 'audit' ? (
                     <div className="h-full flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
                         <div className="w-24 h-24 bg-slate-100 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner"><Building2 size={48} className="text-slate-300" /></div>
-                        <h2 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter">Seleção de Escopo Necessária</h2>
-                        <p className="text-slate-500 mb-10 text-center font-medium leading-relaxed max-w-sm">Para visualizar algoritmos e dados, conecte-se a uma de suas empresas ou grupos cadastrados.</p>
+                        <h2 className="text-3xl font-black mb-3 tracking-tighter" style={{ color: 'var(--text-primary)' }}>Seleção de Escopo Necessária</h2>
+                        <p className="mb-10 text-center font-medium leading-relaxed max-w-sm" style={{ color: 'var(--text-secondary)' }}>Para visualizar algoritmos e dados, conecte-se a uma de suas empresas ou grupos cadastrados.</p>
                         <button onClick={() => setActiveTab('companies')} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl transition-all hover:-translate-y-1 active:scale-95">Gerenciar Estrutura</button>
                     </div>
                 ) : (

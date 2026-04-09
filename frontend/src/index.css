@@ -2,8 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  font-size: 11px; /* Reduz tudo que é Tailwind para 75% do tamanho original */
+@layer base {
+  html {
+    font-size: 11px; /* Reduz tudo que é Tailwind para 75% do tamanho original */
+  }
+}
+
+/* ============================================
+   VECTOR CONNECT — DESIGN TOKENS (TEMA)
+   ============================================ */
+
+:root {
+  /* Superfícies */
+  --bg-base:        #f1f5f9;   /* fundo da página */
+  --bg-card:        #ffffff;   /* cards / painéis */
+  --bg-sidebar:     #1e293b;   /* sidebar (já era escura) */
+  --bg-hover:       #f8fafc;   /* hover de linhas de tabela */
+  --bg-input:       #ffffff;   /* inputs */
+
+  /* Bordas */
+  --border:         #e2e8f0;
+  --border-strong:  #cbd5e1;
+
+  /* Textos */
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+  --text-inverse:   #f8fafc;   /* texto sobre fundo escuro */
+
+  /* Marca / Accent */
+  --accent:         #3b82f6;   /* azul principal */
+  --accent-hover:   #2563eb;
+  --accent-subtle:  #eff6ff;   /* fundo de badge azul */
+
+  /* Semânticas financeiras */
+  --color-positive: #16a34a;   /* verde — receita */
+  --color-negative: #dc2626;   /* vermelho — despesa */
+  --color-warning:  #d97706;   /* amarelo — atenção */
+  --color-neutral:  #6366f1;   /* roxo — neutro/info */
+
+  /* Sombras */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
+  --shadow-lg:   0 4px 16px 0 rgb(0 0 0 / 0.10);
+
+  /* Transição global */
+  --transition: 150ms ease;
+}
+
+/* ── TEMA ESCURO ─────────────────────────────── */
+[data-theme="dark"] {
+  /* Superfícies */
+  --bg-base:        #0f172a;
+  --bg-card:        #1e293b;
+  --bg-sidebar:     #0f172a;
+  --bg-hover:       #263248;
+  --bg-input:       #1e293b;
+
+  /* Bordas */
+  --border:         #334155;
+  --border-strong:  #475569;
+
+  /* Textos */
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #64748b;
+  --text-inverse:   #0f172a;
+
+  /* Marca */
+  --accent:         #60a5fa;
+  --accent-hover:   #3b82f6;
+  --accent-subtle:  #1e3a5f;
+
+  /* Semânticas financeiras (mesmas — já são saturadas) */
+  --color-positive: #4ade80;
+  --color-negative: #f87171;
+  --color-warning:  #fbbf24;
+  --color-neutral:  #a5b4fc;
+
+  /* Sombras (mais pronunciadas no escuro) */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.30), 0 1px 2px -1px rgb(0 0 0 / 0.20);
+  --shadow-lg:   0 4px 16px 0 rgb(0 0 0 / 0.40);
+}
+
+/* ── APLICAÇÃO GLOBAL ────────────────────────── */
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  transition: background-color var(--transition), color var(--transition);
 }
 
 /* Remove setas de input number */
@@ -15,4 +100,34 @@ input[type=number]::-webkit-outer-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* ==========================================================
+   HACK NUCLEAR DE MODO ESCURO 
+   Isso vai hackear todas as telas do sistema que estão 
+   com cores fixadas (bg-white, text-slate-900, etc)
+   ========================================================== */
+html[data-theme='dark'] .bg-white {
+  background-color: var(--bg-card) !important;
+}
+
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-slate-800,
+html[data-theme='dark'] .text-slate-700 {
+  color: var(--text-primary) !important;
+}
+
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='dark'] .text-slate-500 {
+  color: var(--text-secondary) !important;
+}
+
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='dark'] .border-slate-100 {
+  border-color: var(--border) !important;
+}
+
+html[data-theme='dark'] .bg-slate-50,
+html[data-theme='dark'] .bg-slate-100 {
+  background-color: var(--bg-hover) !important;
 }
