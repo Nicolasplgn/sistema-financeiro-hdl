@@ -1,15 +1,20 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+// ARQUIVO: src/pages/FinancialEntries.jsx
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { 
-  Save, CheckCircle, DollarSign, TrendingUp, 
-  ArrowDownCircle, FileText, Calendar, Building2, Calculator, 
-  Eraser, History, Trash2, Edit3, ChevronDown, ChevronUp, 
-  Plus, X, Tag, Copy, ChevronLeft, ChevronRight, AlertCircle,
-  ArrowUpRight, ArrowDownRight, Info, ListPlus, FileSpreadsheet,
-  UploadCloud, Loader2
-} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ImportModal from '../components/ImportModal';
+
+// =================================================================================
+// IMPORTAÇÃO DOS REACT ICONS (Substituindo o Lucide)
+// =================================================================================
+import { 
+  FiSave, FiCheckCircle, FiTrendingUp, 
+  FiArrowDownCircle, FiCalendar, 
+  FiTrash2, FiEdit3, FiChevronDown, 
+  FiPlus, FiX, FiCopy, FiChevronLeft, FiChevronRight, FiAlertCircle,
+  FiInfo, FiUploadCloud, FiLoader, FiList, FiFileText
+} from 'react-icons/fi';
+import { FaEraser } from 'react-icons/fa';
 
 // =================================================================================
 // ESTADO INICIAL DO FORMULÁRIO
@@ -36,7 +41,7 @@ const MoneyInput = ({ label, value, onChange, readOnly = false }) => {
   return (
     <div className="flex flex-col gap-1.5 group">
       <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] ml-1 group-focus-within:text-blue-600 transition-colors flex items-center gap-1">
-        {label} {readOnly && <Info size={10} className="text-slate-300"/>}
+        {label} {readOnly && <FiInfo size={10} className="text-slate-300"/>}
       </label>
       <div className={`relative flex items-center transition-all duration-300 ${readOnly ? 'bg-slate-50/50' : 'bg-white shadow-sm hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500'} border border-slate-200 rounded-xl px-4 py-3`}>
         <span className="text-slate-400 font-bold mr-2 text-xs">R$</span>
@@ -85,15 +90,15 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   const [currentMonth, setCurrentMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [details, setDetails] = useState([]);
-  const [history, setHistory] = useState([]);
+  const[history, setHistory] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const[categories, setCategories] = useState([]);
   const [status, setStatus] = useState(null);
   const [showCloneModal, setShowCloneModal] = useState(false);
-  const [cloneTarget, setCloneTarget] = useState('');
+  const[cloneTarget, setCloneTarget] = useState('');
 
-  // ── Estado do Modal de Importação (NOVO) ────────────────────────────────────
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  // ── Estado do Modal de Importação ────────────────────────────────────
+  const[isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // ── Estado do Novo Item Analítico ───────────────────────────────────────────
   const [newItem, setNewItem] = useState({ 
@@ -121,18 +126,6 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     return { totalRev, totalTax, totalCost, profit, margin };
   }, [form]);
 
-  // ── Sincronização: Lançamentos Analíticos → Totais da DRE ──────────────────
-  useEffect(() => {
-    const sumExpenses = details.filter(item => item.type === 'EXPENSE').reduce((acc, curr) => acc + Number(curr.amount), 0);
-    const sumRevenueExtras = details.filter(item => item.type === 'REVENUE').reduce((acc, curr) => acc + Number(curr.amount), 0);
-    
-    setForm(prev => ({
-        ...prev,
-        expensesTotal: sumExpenses > 0 ? sumExpenses : prev.expensesTotal,
-        revenue: { ...prev.revenue, other: sumRevenueExtras > 0 ? sumRevenueExtras : prev.revenue.other }
-    }));
-  }, [details]);
-
   // ── Carregar Histórico e Dados Iniciais ─────────────────────────────────────
   const loadInitialData = async () => {
     try {
@@ -151,10 +144,8 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   };
 
   useEffect(() => {
-    if (companyId) {
-        loadInitialData();
-    }
-  }, [companyId]);
+    if (companyId) loadInitialData();
+  },[companyId]);
 
   // ── Carregar Lançamentos do Mês Selecionado ─────────────────────────────────
   useEffect(() => {
@@ -176,7 +167,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             expensesTotal: data.expenses_total || 0,
             notes: data.notes || ''
           });
-          setDetails(data.details || []);
+          setDetails(data.details ||[]);
         } else {
           setForm(INITIAL_FORM_STATE);
           setDetails([]);
@@ -220,13 +211,11 @@ const FinancialEntries = ({ companyId, apiBase }) => {
     }
   };
 
-  // ── Callback após importação bem-sucedida (NOVO) ────────────────────────────
+  // ── Callback após importação bem-sucedida ────────────────────────────
   const handleImportSuccess = async ({ period: importedPeriod }) => {
-    // 1. Atualiza o histórico
     const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
     setHistory(resHist.data);
 
-    // 2. Se o período importado for o mês atual em tela, força recarregamento
     if (importedPeriod && importedPeriod === currentMonth) {
       const [y, m] = currentMonth.split('-');
       const prev = m === '01' ? '02' : String(parseInt(m) - 1).padStart(2, '0');
@@ -258,22 +247,19 @@ const FinancialEntries = ({ companyId, apiBase }) => {
       return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  // ADICIONE ISSO — deduplica categorias pelo nome+tipo antes de renderizar
-const uniqueCategories = useMemo(() => {
-  const seen = new Set();
-  return categories.filter(c => {
-      const key = `${c.name}|${c.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-  });
-}, [categories]);
+  // Deduplica categorias pelo nome+tipo antes de renderizar
+  const uniqueCategories = useMemo(() => {
+    const seen = new Set();
+    return categories.filter(c => {
+        const key = `${c.name}|${c.type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+  }, [categories]);
   
   const filteredPartners = partners.filter(p => newItem.type === 'REVENUE' ? (p.type === 'CLIENT' || p.type === 'BOTH') : (p.type === 'SUPPLIER' || p.type === 'BOTH'));
 
-  // =============================================================================
-  // RENDERIZAÇÃO
-  // =============================================================================
   return (
     <div className="max-w-7xl mx-auto pb-20 px-6 animate-in fade-in duration-700">
 
@@ -287,27 +273,24 @@ const uniqueCategories = useMemo(() => {
         </div>
 
         <div className="flex items-center gap-3">
-           
-           {/* BOTÃO DE IMPORTAÇÃO — abre o modal unificado */}
            <button 
              onClick={() => setIsImportModalOpen(true)}
              className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 uppercase tracking-widest active:scale-95"
            >
-             <UploadCloud size={16}/>
-             Importar Dados
+             <FiUploadCloud size={16}/> Importar Dados
            </button>
 
            <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5">
-              <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><ChevronLeft size={20}/></button>
+              <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><FiChevronLeft size={20}/></button>
               <div className="flex items-center px-4 gap-2 border-x border-slate-100">
-                <Calendar size={16} className="text-blue-500" />
+                <FiCalendar size={16} className="text-blue-500" />
                 <input type="month" value={currentMonth} onChange={(e) => setCurrentMonth(e.target.value)} className="bg-transparent text-slate-700 font-bold text-sm border-none outline-none uppercase cursor-pointer" />
               </div>
-              <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><ChevronRight size={20}/></button>
+              <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><FiChevronRight size={20}/></button>
            </div>
            
            <button onClick={() => setShowCloneModal(true)} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-2xl text-xs font-black hover:bg-slate-50 transition shadow-sm uppercase tracking-widest">
-             <Copy size={16} className="text-amber-500"/> Clonar Mês
+             <FiCopy size={16} className="text-amber-500"/> Clonar Mês
            </button>
         </div>
       </header>
@@ -318,7 +301,7 @@ const uniqueCategories = useMemo(() => {
           <div className="flex flex-col lg:flex-row items-center justify-between px-10 py-8 gap-10">
             <div className="flex items-center gap-6">
               <div className={`p-5 rounded-3xl ${totals.profit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'} border border-white/5`}>
-                {totals.profit >= 0 ? <TrendingUp size={32} /> : <ArrowDownCircle size={32} />}
+                {totals.profit >= 0 ? <FiTrendingUp size={32} /> : <FiArrowDownCircle size={32} />}
               </div>
               <div>
                 <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Resultado Líquido (EBITDA)</p>
@@ -343,18 +326,18 @@ const uniqueCategories = useMemo(() => {
         
         {/* COLUNA 1: RECEITAS E MÓDULO ANALÍTICO */}
         <div className="space-y-8">
-            <InputSection title="Faturamento Bruto" icon={TrendingUp} color="text-emerald-600" description="Entradas principais registradas">
+            <InputSection title="Faturamento Bruto" icon={FiTrendingUp} color="text-emerald-600" description="Entradas principais registradas">
                 <MoneyInput label="Revenda de Mercadorias" value={form.revenue.resale} onChange={value => setForm({...form, revenue: {...form.revenue, resale: value}})} />
                 <MoneyInput label="Produção Própria" value={form.revenue.product} onChange={value => setForm({...form, revenue: {...form.revenue, product: value}})} />
                 <MoneyInput label="Prestação de Serviços" value={form.revenue.service} onChange={value => setForm({...form, revenue: {...form.revenue, service: value}})} />
-                <MoneyInput label="Analítico (Calculado)" value={form.revenue.other} readOnly />
+                <MoneyInput label="Outras Receitas" value={form.revenue.other} onChange={value => setForm({...form, revenue: {...form.revenue, other: value}})} />
             </InputSection>
 
             {/* MÓDULO DE LANÇAMENTO ANALÍTICO */}
             <div className="bg-slate-900 rounded-[2rem] p-6 shadow-2xl border border-slate-800 relative overflow-hidden">
                 <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-3xl" />
                 <h3 className="font-black text-white text-[9px] mb-6 flex items-center gap-2 uppercase tracking-[0.2em] relative z-10">
-                    <ListPlus size={14} className="text-blue-400"/> Detalhamento Analítico
+                    <FiList size={14} className="text-blue-400"/> Detalhamento Analítico
                 </h3>
                 
                 <div className="flex gap-2 mb-6 bg-slate-800/50 p-1.5 rounded-2xl border border-white/5 relative z-10">
@@ -368,7 +351,7 @@ const uniqueCategories = useMemo(() => {
                             <option value="" disabled hidden>Classificação Contábil...</option>
                             {uniqueCategories.filter(c => c.type === newItem.type).map(c => <option key={c.id} value={c.id} className="bg-slate-900 uppercase tracking-widest">{c.name}</option>)}
                         </select>
-                        <ChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
+                        <FiChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
                     </div>
 
                     <div className="relative">
@@ -376,13 +359,13 @@ const uniqueCategories = useMemo(() => {
                             <option value="" disabled hidden>Parceiro / Entidade...</option>
                             {filteredPartners.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
                         </select>
-                        <ChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
+                        <FiChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
                     </div>
 
                     <div className="flex gap-2">
                         <input 
                             type="text" 
-                            placeholder="Histórico / Descrição..." 
+                            placeholder="Histórico..." 
                             value={newItem.description} 
                             onChange={e => setNewItem({...newItem, description: e.target.value})} 
                             className="flex-1 text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600" 
@@ -408,7 +391,7 @@ const uniqueCategories = useMemo(() => {
                             className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl transition shadow-lg active:scale-95 flex items-center justify-center"
                             title="Adicionar Item"
                         >
-                            <Plus size={20}/>
+                            <FiPlus size={20}/>
                         </button>
                     </div>
                 </div>
@@ -422,7 +405,7 @@ const uniqueCategories = useMemo(() => {
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className={`font-mono font-black text-xs ${item.type === 'REVENUE' ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(item.amount)}</span>
-                                <button onClick={() => setDetails(details.filter((_, i) => i !== index))} className="text-slate-600 hover:text-rose-500 transition-colors"><X size={14}/></button>
+                                <button onClick={() => setDetails(details.filter((_, i) => i !== index))} className="text-slate-600 hover:text-rose-500 transition-colors"><FiX size={14}/></button>
                             </div>
                         </div>
                     ))}
@@ -436,7 +419,7 @@ const uniqueCategories = useMemo(() => {
         </div>
 
         {/* COLUNA 2: IMPOSTOS */}
-        <InputSection title="Deduções e Tributos" icon={FileSpreadsheet} color="text-amber-600" description="Impacto tributário do período">
+        <InputSection title="Deduções e Tributos" icon={FiFileText} color="text-amber-600" description="Impacto tributário do período">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
             <MoneyInput label="DAS / Simples Nacional" value={form.taxes.icms} onChange={v => setForm({...form, taxes: {...form.taxes, icms: v}})} />
             <MoneyInput label="ISS Retido" value={form.taxes.iss} onChange={v => setForm({...form, taxes: {...form.taxes, iss: v}})} />
@@ -451,9 +434,9 @@ const uniqueCategories = useMemo(() => {
         
         {/* COLUNA 3: DESPESAS E SALVAR */}
         <div className="space-y-8">
-          <InputSection title="Custos e Despesas" icon={ArrowDownCircle} color="text-rose-600" description="Saídas operacionais fixas e variáveis">
+          <InputSection title="Custos e Despesas" icon={FiArrowDownCircle} color="text-rose-600" description="Saídas operacionais fixas e variáveis">
             <MoneyInput label="Compras Diretas" value={form.purchasesTotal} onChange={v => setForm({...form, purchasesTotal: v})} />
-            <MoneyInput label="Saídas Analíticas" value={form.expensesTotal} readOnly />
+            <MoneyInput label="Despesas Operacionais" value={form.expensesTotal} onChange={v => setForm({...form, expensesTotal: v})} />
           </InputSection>
 
           <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
@@ -463,10 +446,10 @@ const uniqueCategories = useMemo(() => {
 
           <div className="flex gap-4">
             <button onClick={handleClearEverything} className="w-20 h-16 flex items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-300 hover:text-rose-500 transition-all active:scale-95 shadow-sm" title="Limpar Tudo">
-              <Eraser size={24} />
+              <FaEraser size={24} />
             </button>
             <button onClick={handleSaveData} disabled={status === 'saving'} className={`flex-1 h-16 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${status === 'success' ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}>
-              {status === 'saving' ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : status === 'success' ? <><CheckCircle size={18}/> Salvo!</> : <><Save size={18}/> Consolidar Mês</>}
+              {status === 'saving' ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : status === 'success' ? <><FiCheckCircle size={18}/> Salvo!</> : <><FiSave size={18}/> Consolidar Mês</>}
             </button>
           </div>
         </div>
@@ -517,8 +500,8 @@ const uniqueCategories = useMemo(() => {
                     <td className="px-10 py-6 text-right font-mono">{formatCurrency(totalRev)}</td>
                     <td className={`px-10 py-6 text-right font-mono font-black ${itemProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatCurrency(itemProfit)}</td>
                     <td className="px-10 py-6 text-center flex justify-center gap-2">
-                        <button onClick={() => setCurrentMonth(item.period_start.substring(0, 7))} className="p-2.5 text-slate-300 hover:text-blue-600 transition-colors"><Edit3 size={18} /></button>
-                        <button onClick={() => handleDeleteEntry(item.period_start)} className="p-2.5 text-slate-300 hover:text-rose-600 transition-colors"><Trash2 size={18} /></button>
+                        <button onClick={() => setCurrentMonth(item.period_start.substring(0, 7))} className="p-2.5 text-slate-300 hover:text-blue-600 transition-colors"><FiEdit3 size={18} /></button>
+                        <button onClick={() => handleDeleteEntry(item.period_start)} className="p-2.5 text-slate-300 hover:text-rose-600 transition-colors"><FiTrash2 size={18} /></button>
                     </td>
                   </tr>
                 );
@@ -538,10 +521,10 @@ const uniqueCategories = useMemo(() => {
         {showCloneModal && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
                 <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative">
-                    <button onClick={() => setShowCloneModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    <button onClick={() => setShowCloneModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><FiX size={20}/></button>
                     
                     <div className="text-center mb-6">
-                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Copy size={32}/></div>
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><FiCopy size={32}/></div>
                         <h3 className="text-sm font-black text-slate-900">Clonar Competência</h3>
                         <p className="text-xs text-slate-500 font-medium mt-2">Copia todos os lançamentos de um mês para outro.</p>
                     </div>
@@ -552,7 +535,7 @@ const uniqueCategories = useMemo(() => {
                             <input disabled value={currentMonth} className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-500 text-center border-none outline-none"/>
                         </div>
                         
-                        <div className="flex justify-center"><ArrowDownCircle className="text-slate-300"/></div>
+                        <div className="flex justify-center"><FiArrowDownCircle className="text-slate-300"/></div>
                         
                         <div>
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino (Cola neste)</label>
@@ -606,7 +589,6 @@ const uniqueCategories = useMemo(() => {
         )}
       </AnimatePresence>
 
-      {/* MODAL DE IMPORTAÇÃO UNIFICADO (NOVO) */}
       <ImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
