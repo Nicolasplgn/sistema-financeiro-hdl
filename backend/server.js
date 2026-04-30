@@ -24,6 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'vector_secret_key_secure_2026';
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 
+// AGENTE HTTPS E UPLOAD
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -53,7 +54,9 @@ const logAction = async (userId, userName, action, details) => {
         await pool.execute(
             'INSERT INTO audit_logs (user_id, user_name, action, details) VALUES (?, ?, ?, ?)',[userId || 0, userName || 'Sistema', action, details]
         ); 
-    } catch(error) { console.error("Erro ao salvar log:", error.message); } 
+    } catch(error) { 
+        console.error("Erro ao salvar log:", error.message); 
+    } 
 };
 
 // =================================================================================
@@ -62,10 +65,13 @@ const logAction = async (userId, userName, action, details) => {
 const parseDreValue = (val) => {
     if (val === null || val === undefined) return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    
     const str = val.toString().replace(/"/g, '').replace(/\u00a0/g, '').trim();
     if (str === '-' || str === '') return 0;
+    
     const direct = parseFloat(str);
     if (!isNaN(direct) && !str.includes(',')) return direct;
+    
     const cleaned = str.replace(/R\$\s*/gi, '').replace(/\./g, '').replace(',', '.').trim();
     const num = parseFloat(cleaned);
     return isNaN(num) ? 0 : num;
@@ -74,6 +80,7 @@ const parseDreValue = (val) => {
 const parseDreCSVToMatrix = (buffer) => {
     const text = buffer.toString('utf8').replace(/^\uFEFF/, ''); 
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+
     return lines.map(line => {
         const cols =[];
         let current = '';
@@ -90,17 +97,22 @@ const parseDreCSVToMatrix = (buffer) => {
 };
 
 // =================================================================================
-// FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE BALANCETE CSV (MOTOR DIRETO E RETO)
+// FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE BALANCETE CSV (MOTOR 3.0 SUPER-BLINDADO)
 // =================================================================================
 const parseBalanceteBR = (str) => {
     if (!str || typeof str !== 'string' || str.trim() === '') return 0;
     let cleaned = str.trim().replace(/R\$\s?/gi, '');
+    
     if (cleaned.indexOf(',') > -1 && cleaned.indexOf('.') > -1) {
-        if (cleaned.indexOf(',') < cleaned.indexOf('.')) cleaned = cleaned.replace(/,/g, ''); 
-        else cleaned = cleaned.replace(/\./g, '').replace(',', '.'); 
+        if (cleaned.indexOf(',') < cleaned.indexOf('.')) {
+            cleaned = cleaned.replace(/,/g, ''); 
+        } else {
+            cleaned = cleaned.replace(/\./g, '').replace(',', '.'); 
+        }
     } else if (cleaned.indexOf(',') > -1) {
         cleaned = cleaned.replace(',', '.'); 
     }
+    
     const num = parseFloat(cleaned);
     return isNaN(num) ? 0 : num;
 };
@@ -114,6 +126,7 @@ const detectPeriodFromCSV = (text) => {
 const parseBalanceteRows = (text) => {
     const lines = text.split('\n');
     const accounts =[];
+
     let delimiter = ';';
     const headerSample = lines.slice(0, 10).join('\n');
     if (headerSample.split(',').length > headerSample.split(';').length) delimiter = ',';
@@ -121,9 +134,11 @@ const parseBalanceteRows = (text) => {
     for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) continue;
+        
         const cols =[];
         let current = '';
         let inQuotes = false;
+
         for (let i = 0; i < line.length; i++) {
             const char = line[i];
             if (char === '"') { inQuotes = !inQuotes; } 
@@ -131,7 +146,9 @@ const parseBalanceteRows = (text) => {
             else { current += char; }
         }
         cols.push(current);
+
         if (cols.length < 4) continue;
+
         const cleanCol = (c) => (c || '').replace(/^"|"$/g, '').trim();
         
         let id = cleanCol(cols[0]);
@@ -150,31 +167,101 @@ const parseBalanceteRows = (text) => {
             tipoC = ''; 
         }
 
+        // Filtro limpo: processa qualquer coisa que tenha id e classificação válida
         if (!classificacao || classificacao.toLowerCase().includes('classifica') || !descricao) continue;
         if (!/^\d/.test(classificacao)) continue;
 
-        accounts.push({ id, classificacao: classificacao.replace(/,/g, '.'), tipoC, descricao, entrada, saida, saldo });
+        accounts.push({ 
+            id, classificacao: classificacao.replace(/,/g, '.'), tipoC, descricao, entrada, saida, saldo 
+        });
     }
     return accounts;
 };
 
-const findLeafAccounts = (accounts) => {
+// ---------------------------------------------------------------------------------
+// ALGORITMO DE RECONCILIAÇÃO (CORRIGE DADOS OCULTOS DO ERP)
+// ---------------------------------------------------------------------------------
+const reconcileHiddenAccounts = (accounts) => {
     const normalize = (cls) => cls ? cls.replace(/,/g, '.').split('.').map(num => parseInt(num, 10)).join('.') : '';
+    accounts.forEach(a => { a.normCls = normalize(a.classificacao); });
+
+    const newAccounts =[];
+
+    accounts.forEach(parent => {
+        if (!parent.normCls) return;
+        const parentLevel = parent.normCls.split('.').length;
+
+        const directChildren = accounts.filter(child => {
+            if (!child.normCls) return false;
+            const childParts = child.normCls.split('.');
+            return child.normCls.startsWith(parent.normCls + '.') && childParts.length === parentLevel + 1;
+        });
+
+        if (directChildren.length > 0) {
+            const sumEntrada = directChildren.reduce((acc, c) => acc + c.entrada, 0);
+            const sumSaida = directChildren.reduce((acc, c) => acc + c.saida, 0);
+
+            const diffEntrada = parent.entrada - sumEntrada;
+            const diffSaida = parent.saida - sumSaida;
+
+            if (diffEntrada > 0.10 || diffSaida > 0.10) {
+                newAccounts.push({
+                    id: parent.id + '_hidden',
+                    classificacao: parent.classificacao + '.999',
+                    normCls: parent.normCls + '.999',
+                    tipoC: 'A',
+                    descricao: parent.descricao + ' (Oculto no ERP)',
+                    entrada: diffEntrada > 0.10 ? diffEntrada : 0,
+                    saida: diffSaida > 0.10 ? diffSaida : 0,
+                    saldo: 0
+                });
+            }
+        }
+    });
+
+    return [...accounts, ...newAccounts];
+};
+
+const findLeafAccounts = (accounts) => {
+    const normalize = (cls) => {
+        if (!cls) return '';
+        return cls.replace(/,/g, '.').split('.').map(num => parseInt(num, 10)).join('.');
+    };
+
     const allNormCls = accounts.map(a => normalize(a.classificacao)).filter(Boolean);
+
     return accounts.filter((acct, index) => {
         const myNormCls = normalize(acct.classificacao);
         if (!myNormCls) return false;
-        const isParent = allNormCls.some((otherCls, otherIndex) => index !== otherIndex && otherCls.startsWith(myNormCls + '.'));
+        
+        // Verifica puramente pela hierarquia (ignorando T ou A)
+        const isParent = allNormCls.some((otherCls, otherIndex) => {
+            return index !== otherIndex && otherCls.startsWith(myNormCls + '.');
+        });
+        
         return !isParent;
     });
 };
 
+const REVENUE_PATTERNS =[
+    { regex: /VEND.*PROD|PRODUTO\s*ACABADO|MERCAD/i, column: 'revenue_product' },
+    { regex: /SERVI[ÇC]|SERVICE/i,                    column: 'revenue_service' },
+    { regex: /REVENDA/i,                               column: 'revenue_resale'  },
+    { regex: /ALUGUEL|LOCA[ÇC]/i,                      column: 'revenue_rent'    },
+];
+
 const TAX_PATTERNS =[
-    { regex: /\bPIS\b/i, column: 'tax_pis' }, { regex: /COFINS/i, column: 'tax_cofins' },
-    { regex: /\bICMS\b/i, column: 'tax_icms' }, { regex: /\bISS\b/i, column: 'tax_iss' },
-    { regex: /\bCSLL\b/i, column: 'tax_csll' }, { regex: /IRPJ.*ADICIONAL|ADICIONAL.*IRPJ/i, column: 'tax_additional_irpj' },
-    { regex: /\bIRPJ\b/i, column: 'tax_irpj' }, { regex: /\bDAS\b|SIMPLES\s*NACIONAL|SIMPLES\s*FED/i, column: 'tax_icms' },
-    { regex: /DIFAL/i, column: 'tax_difal' }, { regex: /\bFUST\b/i, column: 'tax_fust' }, { regex: /\bFUNTELL\b/i, column: 'tax_funtell' },
+    { regex: /\bPIS\b/i,                                  column: 'tax_pis'             },
+    { regex: /COFINS/i,                                   column: 'tax_cofins'          },
+    { regex: /\bICMS\b/i,                                 column: 'tax_icms'            },
+    { regex: /\bISS\b/i,                                  column: 'tax_iss'             },
+    { regex: /\bCSLL\b/i,                                 column: 'tax_csll'            },
+    { regex: /IRPJ.*ADICIONAL|ADICIONAL.*IRPJ/i,          column: 'tax_additional_irpj' },
+    { regex: /\bIRPJ\b/i,                                 column: 'tax_irpj'            },
+    { regex: /\bDAS\b|SIMPLES\s*NACIONAL|SIMPLES\s*FED/i, column: 'tax_icms'            },
+    { regex: /DIFAL/i,                                    column: 'tax_difal'           },
+    { regex: /\bFUST\b/i,                                 column: 'tax_fust'            },
+    { regex: /\bFUNTELL\b/i,                              column: 'tax_funtell'         },
 ];
 
 const CPV_IN_GROUP2  =[/CPV|CMV|CUSTO.*PROD.*VEND|CUSTO.*MERC.*VEND/i, /FRETE.*COMP|FRETE.*ENTR|FRETE.*MAT/i, /DEVOLU[ÇC]/i, /ABATIMENTO/i];
@@ -185,14 +272,29 @@ const mapAccountToColumns = (account) => {
     const desc = descricao.toUpperCase();
     const mainGroup = parseInt(classificacao.split(/[.,]/)[0], 10);
 
-    if (isNaN(mainGroup) || mainGroup >= 10 || mainGroup === 0) return null;
+    // 1. Liberar grupos altos (Removida a trava mainGroup >= 10)
+    if (isNaN(mainGroup) || mainGroup === 0) return null;
 
     let value = entrada > saida ? entrada - saida : saida - entrada;
     if (value === 0 && entrada > 0) value = entrada;
     if (value === 0) return null;
 
-    // As Receitas não são mapeadas aqui pois o motor vai buscá-las direto da conta PAI (Grupo 1 e 6)
-    if (mainGroup === 1 || mainGroup === 6) return null;
+    if (mainGroup === 1 || mainGroup === 6) {
+        if (/DEVOLU[ÇC]|ABATIMENTO|DESCONTO|DEDU[ÇC]/i.test(desc) || saida > entrada) {
+            let col = 'expenses_total'; 
+            for (const p of TAX_PATTERNS) { if (p.regex.test(desc)) { col = p.column; break; } }
+            const val = saida > entrada ? saida - entrada : saida;
+            if (val > 0) return { column: col, value: val, entryType: 'EXPENSE', description: descricao };
+        }
+
+        let column = mainGroup === 6 ? 'revenue_other' : 'revenue_product';
+        if (mainGroup === 1) {
+            for (const p of REVENUE_PATTERNS) { 
+                if (p.regex.test(desc)) { column = p.column; break; } 
+            }
+        }
+        return { column, value, entryType: 'REVENUE', description: descricao };
+    }
     
     if (mainGroup === 2) {
         let column = 'tax_icms'; 
@@ -204,6 +306,16 @@ const mapAccountToColumns = (account) => {
     
     if (mainGroup === 3) return { column: 'purchases_total', value, entryType: 'EXPENSE', description: descricao }; 
     if (mainGroup === 4 || mainGroup === 5) return { column: 'expenses_total', value, entryType: 'EXPENSE', description: descricao }; 
+    
+    // 2. Incluir Grupo 14 explicitamente
+    if (mainGroup === 14) {
+        return { 
+            column: 'expenses_total', 
+            value: value, 
+            entryType: 'EXPENSE', 
+            description: descricao 
+        };
+    }
     
     return null;
 };
@@ -265,7 +377,7 @@ const initDb = async () => {
 
 app.post('/api/auth/login', async (req, res) => {
     try {
-        const [u] = await pool.execute('SELECT * FROM users WHERE email = ? AND password_hash = ?',[req.body.email, req.body.password]);
+        const[u] = await pool.execute('SELECT * FROM users WHERE email = ? AND password_hash = ?',[req.body.email, req.body.password]);
         if (u.length === 0) return res.status(401).json({ message: 'Credenciais Inválidas' });
         const user = u[0];
         const token = jwt.sign({ id: user.id, email: user.email, role: user.role, company_id: user.company_id }, JWT_SECRET, { expiresIn: '24h' });
@@ -288,7 +400,7 @@ app.post('/api/admin/users', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ message: 'Sem permissão.' });
     const { full_name, email, password, role, max_companies } = req.body;
     try {
-        const [exists] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
+        const[exists] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
         if (exists.length > 0) return res.status(400).json({ message: 'E-mail já cadastrado.' });
         const [result] = await pool.execute('INSERT INTO users (full_name, email, password_hash, role, max_companies) VALUES (?, ?, ?, ?, ?)',[full_name, email, password, role || 'ADMIN', max_companies || 1]);
         res.json({ success: true, id: result.insertId });
@@ -316,7 +428,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 app.post('/api/admin/impersonate', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ message: 'Sem permissão.' });
     try {
-        const [users] = await pool.execute('SELECT * FROM users WHERE id = ?', [req.body.targetUserId]);
+        const[users] = await pool.execute('SELECT * FROM users WHERE id = ?',[req.body.targetUserId]);
         if (users.length === 0) return res.status(404).json({ message: 'Usuário não encontrado' });
         const targetUser = users[0];
         const token = jwt.sign({ id: targetUser.id, email: targetUser.email, role: targetUser.role, company_id: targetUser.company_id }, JWT_SECRET, { expiresIn: '4h' });
@@ -353,9 +465,9 @@ app.put('/api/sales-channels/:id', async (req, res) => {
 app.post('/api/materials', async (req, res) => { try { const [r] = await pool.execute(`INSERT INTO materials (company_id, name, ncm, price_national, price_imported, ipi_percent, is_national) VALUES (?, ?, ?, ?, ?, ?, ?)`,[req.body.company_id, req.body.name, req.body.ncm, req.body.price_national, req.body.price_imported, req.body.ipi_percent, req.body.is_national ? 1 : 0]); res.json({success:true, id:r.insertId}); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.get('/api/materials-full', async (req, res) => { try { const [r] = await pool.execute('SELECT * FROM materials WHERE company_id = ? ORDER BY id DESC LIMIT 100',[req.query.companyId]); res.json(r); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/materials/:id', async (req, res) => { try { await pool.execute('DELETE FROM materials WHERE id = ?',[req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/products', async (req, res) => { try { const [r] = await pool.execute('INSERT INTO products (company_id, name, sku) VALUES (?, ?, ?)',[req.body.company_id, req.body.name, req.body.sku]); res.json({success:true, id:r.insertId}); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.delete('/api/products/:id', async (req, res) => { try { await pool.execute('DELETE FROM products WHERE id = ?', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.get('/api/products-list', async (req, res) => { try { const [r] = await pool.execute('SELECT id, name, sku FROM products WHERE company_id = ? ORDER BY name ASC', [req.query.companyId || 0]); res.json(r); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/products', async (req, res) => { try { const[r] = await pool.execute('INSERT INTO products (company_id, name, sku) VALUES (?, ?, ?)',[req.body.company_id, req.body.name, req.body.sku]); res.json({success:true, id:r.insertId}); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.delete('/api/products/:id', async (req, res) => { try { await pool.execute('DELETE FROM products WHERE id = ?',[req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.get('/api/products-list', async (req, res) => { try { const [r] = await pool.execute('SELECT id, name, sku FROM products WHERE company_id = ? ORDER BY name ASC',[req.query.companyId || 0]); res.json(r); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.get('/api/price-calc', async (req, res) => { try { const r = await PricingService.calculateProductPrice(req.query.productId, req.query.channelId); res.json(r); } catch (e) { res.status(500).json({error: e.message}); } });
 
 app.get('/api/utils/cnpj/:cnpj', async (req, res) => { 
@@ -403,11 +515,12 @@ app.delete('/api/companies/:id', async (req, res) => {
 app.get('/api/partners/:companyId', async (req, res) => { try { const [r] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name', [req.params.companyId]); res.json(r); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/partners', async (req, res) => { try { await pool.execute('INSERT INTO partners (company_id, name, tax_id, type, phone, email) VALUES (?, ?, ?, ?, ?, ?)',[req.body.company_id, req.body.name, req.body.tax_id, req.body.type, req.body.phone, req.body.email]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/partners/:id', async (req, res) => { try { await pool.execute('DELETE FROM partners WHERE id = ?', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.get('/api/categories', async (req, res) => { try { const [r] = await pool.execute('SELECT * FROM categories'); res.json(r); } catch (e) { res.status(500).json(e); } });
+app.get('/api/categories', async (req, res) => { try { const[r] = await pool.execute('SELECT * FROM categories'); res.json(r); } catch (e) { res.status(500).json(e); } });
 
 // =================================================================================
 // MÓDULO: LANÇAMENTOS E RELATÓRIOS (DRE / BI)
 // =================================================================================
+
 app.get('/api/entries', async (req, res) => { 
     try { 
         const[r] = await pool.execute('SELECT * FROM monthly_entries WHERE company_id = ? AND period_start = ?',[req.query.companyId, req.query.month]); 
@@ -621,7 +734,7 @@ app.post('/api/import/dre', upload.single('file'), async (req, res) => {
 });
 
 // =================================================================================
-// O SEGREDO DO FATURAMENTO EXATO
+// IMPORTAÇÃO DO BALANCETE - LÓGICA DE GRUPO 14 EXPLICITA
 // =================================================================================
 app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
     const conn = await pool.getConnection();
@@ -638,7 +751,10 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         const allAccounts  = parseBalanceteRows(text);
         if (allAccounts.length === 0) throw new Error("Nenhuma conta lida.");
-        const leafAccounts = findLeafAccounts(allAccounts);
+        
+        // RECUPERA DADOS OCULTOS DO ERP
+        const reconciledAccounts = reconcileHiddenAccounts(allAccounts);
+        const leafAccounts = findLeafAccounts(reconciledAccounts);
 
         const CAT_DEFS = {
             revenue_product:     { name: 'Venda de Produtos (Balancete)',      type: 'REVENUE' },
@@ -661,7 +777,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
         const categoriesMap = {};
         for (const [col, cat] of Object.entries(CAT_DEFS)) {
             await conn.execute('INSERT IGNORE INTO categories (name, type) VALUES (?, ?)',[cat.name, cat.type]);
-            const [rows] = await conn.execute('SELECT id FROM categories WHERE name = ?', [cat.name]);
+            const [rows] = await conn.execute('SELECT id FROM categories WHERE name = ?',[cat.name]);
             if (rows.length > 0) categoriesMap[col] = rows[0].id;
         }
 
@@ -685,7 +801,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
             detailMap['REV_6'] = { category_id: categoriesMap['revenue_other'], type: 'REVENUE', amount: val6, description: rev6.descricao || 'OUTRAS RECEITAS' };
         }
 
-        // 2. PROCESSA O RESTO (Custos, Despesas e Impostos)
+        // 2. PROCESSA O RESTO (Custos, Despesas, Impostos E GRUPO 14)
         for (const account of leafAccounts) {
             const mapped = mapAccountToColumns(account);
             if (!mapped) continue;
@@ -709,7 +825,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         await conn.beginTransaction();
 
-        const[existing] = await conn.execute('SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?', [companyId, periodStart]);
+        const[existing] = await conn.execute('SELECT id FROM monthly_entries WHERE company_id = ? AND period_start = ?',[companyId, periodStart]);
         
         const entryData =[
             amountOrZero(columnTotals.revenue_resale), amountOrZero(columnTotals.revenue_product), 
@@ -732,7 +848,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
                 tax_icms=?, tax_difal=?, tax_iss=?, tax_pis=?, tax_cofins=?, tax_csll=?, tax_irpj=?, tax_additional_irpj=?, tax_fust=?, tax_funtell=?,
                 purchases_total=?, expenses_total=?, notes=? WHERE id=?
             `,[...entryData, `Balancete Importado`, entryId]);
-            await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
+            await conn.execute('DELETE FROM entry_details WHERE entry_id = ?',[entryId]);
         } else {
             const[ins] = await conn.execute(`
                 INSERT INTO monthly_entries (
@@ -770,7 +886,7 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
     try {
         const { companyId, startDate, endDate } = req.query;
         const [clients] = await pool.execute(`SELECT p.name, SUM(ed.amount) as value FROM entry_details ed JOIN partners p ON ed.partner_id=p.id JOIN monthly_entries me ON ed.entry_id=me.id WHERE me.company_id=? AND me.period_start>=? AND me.period_start<=? AND ed.type='REVENUE' GROUP BY p.name ORDER BY value DESC LIMIT 5`,[companyId, startDate, endDate]);
-        const [suppliers] = await pool.execute(`SELECT p.name, SUM(ed.amount) as value FROM entry_details ed JOIN partners p ON ed.partner_id=p.id JOIN monthly_entries me ON ed.entry_id=me.id WHERE me.company_id=? AND me.period_start>=? AND me.period_start<=? AND ed.type='EXPENSE' GROUP BY p.name ORDER BY value DESC LIMIT 5`, [companyId, startDate, endDate]);
+        const [suppliers] = await pool.execute(`SELECT p.name, SUM(ed.amount) as value FROM entry_details ed JOIN partners p ON ed.partner_id=p.id JOIN monthly_entries me ON ed.entry_id=me.id WHERE me.company_id=? AND me.period_start>=? AND me.period_start<=? AND ed.type='EXPENSE' GROUP BY p.name ORDER BY value DESC LIMIT 5`,[companyId, startDate, endDate]);
         res.json({ clients, suppliers });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -783,7 +899,7 @@ app.get('/api/dashboard/performance/:companyId', async (req, res) => {
                 SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as taxes, 
                 SUM(COALESCE(purchases_total,0)+COALESCE(expenses_total,0)) as costs
             FROM monthly_entries WHERE company_id = ?
-        `, [req.params.companyId]);
+        `,[req.params.companyId]);
         res.json(r[0]);
     } catch(e) { res.status(500).json({error: e.message}); }
 });
