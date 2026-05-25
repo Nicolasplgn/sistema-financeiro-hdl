@@ -117,14 +117,27 @@ const FinancialEntries = ({ companyId, apiBase }) => {
   };
 
   // ── Cálculo de Totais e Margens para a DRE ──────────────────────────────────
-  const totals = useMemo(() => {
-    const totalRev = Object.values(form.revenue).reduce((a, b) => Number(a) + Number(b), 0);
-    const totalTax = Object.values(form.taxes).reduce((a, b) => Number(a) + Number(b), 0);
-    const totalCost = Number(form.purchasesTotal) + Number(form.expensesTotal);
-    const profit = totalRev - totalTax - totalCost;
-    const margin = totalRev > 0 ? (profit / totalRev) * 100 : 0;
-    return { totalRev, totalTax, totalCost, profit, margin };
-  }, [form]);
+    const totals = useMemo(() => {
+      // Faturamento Operacional (Grupos Principais)
+      const operationalRev = Number(form.revenue.resale) + Number(form.revenue.product) + Number(form.revenue.service) + Number(form.revenue.rent);
+      
+      // Receita Não Operacional (Grupo 6)
+      const otherRev = Number(form.revenue.other);
+      
+      // Receita Total (Para cálculo de lucro)
+      const totalRev = operationalRev + otherRev;
+
+      const totalTax = Object.values(form.taxes).reduce((a, b) => Number(a) + Number(b), 0);
+      const totalCost = Number(form.purchasesTotal) + Number(form.expensesTotal);
+      
+      // Lucro considera todas as receitas e desconta saídas
+      const profit = totalRev - totalTax - totalCost;
+      
+      // A margem real da empresa (Margem Operacional) deve ser baseada no faturamento operacional
+      const margin = operationalRev > 0 ? (profit / operationalRev) * 100 : 0;
+      
+      return { operationalRev, totalTax, totalCost, profit, margin };
+    }, [form]);
 
   // ── Carregar Histórico e Dados Iniciais ─────────────────────────────────────
   const loadInitialData = async () => {
@@ -314,7 +327,7 @@ const FinancialEntries = ({ companyId, apiBase }) => {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-12 w-full lg:w-auto px-10 lg:border-l border-white/10 text-center lg:text-left">
-              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Faturamento</p><p className="font-mono text-sm font-bold text-emerald-400 tracking-tight">{formatCurrency(totals.totalRev)}</p></div>
+              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Faturamento</p><p className="font-mono text-sm font-bold text-emerald-400 tracking-tight">{formatCurrency(totals.operationalRev)}</p></div>
               <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Tributos</p><p className="font-mono text-sm font-bold text-amber-400 tracking-tight">{formatCurrency(totals.totalTax)}</p></div>
               <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Despesas</p><p className="font-mono text-sm font-bold text-rose-400 tracking-tight">{formatCurrency(totals.totalCost)}</p></div>
             </div>
@@ -472,12 +485,14 @@ const FinancialEntries = ({ companyId, apiBase }) => {
             </thead>
             <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
               {history.map((item) => {
-                const totalRev = 
+                // SEPARA O FATURAMENTO OPERACIONAL DO GRUPO 6
+                const operationalRev = 
                   Number(item.revenue_resale || 0) + 
                   Number(item.revenue_product || 0) + 
                   Number(item.revenue_service || 0) + 
-                  Number(item.revenue_rent || 0) + 
-                  Number(item.revenue_other || 0);
+                  Number(item.revenue_rent || 0);
+                  
+                const otherRev = Number(item.revenue_other || 0);
 
                 const totalTax = 
                   Number(item.tax_icms || 0) + 
@@ -492,12 +507,14 @@ const FinancialEntries = ({ companyId, apiBase }) => {
                   Number(item.tax_funtell || 0);
 
                 const totalCost = Number(item.purchases_total || 0) + Number(item.expenses_total || 0);
-                const itemProfit = totalRev - totalTax - totalCost;
+                
+                // O LUCRO CONTABILIZA TUDO O QUE ENTROU E SAIU
+                const itemProfit = (operationalRev + otherRev) - totalTax - totalCost;
 
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-10 py-6 font-bold uppercase">{item.period_start.substring(0, 7)}</td>
-                    <td className="px-10 py-6 text-right font-mono">{formatCurrency(totalRev)}</td>
+                    <td className="px-10 py-6 text-right font-mono">{formatCurrency(operationalRev)}</td>
                     <td className={`px-10 py-6 text-right font-mono font-black ${itemProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatCurrency(itemProfit)}</td>
                     <td className="px-10 py-6 text-center flex justify-center gap-2">
                         <button onClick={() => setCurrentMonth(item.period_start.substring(0, 7))} className="p-2.5 text-slate-300 hover:text-blue-600 transition-colors"><FiEdit3 size={18} /></button>

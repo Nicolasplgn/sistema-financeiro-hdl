@@ -281,34 +281,23 @@ const mapAccountToColumns = (account) => {
 
     if (isNaN(mainGroup) || mainGroup === 0) return null;
 
-    // --- AJUSTE DE POLARIDADE BASEADO NO SEU RELATÓRIO ---
-    // No seu balancete, as Receitas (Grupo 1) estão na coluna ENTRADA.
-    // As Despesas (Grupos 2, 3, 4, 5) também estão na coluna SAÍDA.
-    
     let value = 0;
     if (mainGroup === 1 || mainGroup === 6) {
-        // Para Receitas: Valor é o que entrou (Entrada - Saída)
         value = entrada - saida;
     } else {
-        // Para Despesas: Valor é o que saiu (Saída - Entrada)
         value = saida - entrada;
     }
 
-    // Se o valor líquido for zero, ignora
     if (value === 0 && entrada === 0 && saida === 0) return null;
-    
-    // Caso a conta tenha apenas um lado preenchido e o cálculo acima zerou (ex: estorno)
     if (value === 0) {
         value = entrada > 0 ? entrada : saida;
     }
 
-    // --- GRUPO 1: RECEITAS OPERACIONAIS ---
+    // --- GRUPO 1: RECEITAS OPERACIONAIS (Faturamento Real) ---
     if (mainGroup === 1) {
-        // Se o valor for positivo, é Receita. Se for negativo, é Dedução (vai para despesa)
         if (value < 0) {
             return { column: 'expenses_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
         }
-        
         let column = 'revenue_product';
         for (const p of REVENUE_PATTERNS) {
             if (p.regex.test(desc)) { column = p.column; break; }
@@ -316,7 +305,7 @@ const mapAccountToColumns = (account) => {
         return { column, value, entryType: 'REVENUE', description: descricao };
     }
 
-    // --- GRUPO 2: DEDUÇÕES E CUSTOS ---
+    // --- GRUPO 2: DEDUÇÕES E IMPOSTOS SOBRE VENDAS ---
     if (mainGroup === 2) {
         let column = 'purchases_total'; 
         for (const p of TAX_PATTERNS) {
@@ -326,25 +315,25 @@ const mapAccountToColumns = (account) => {
         return { column, value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPO 3: CPV / CMV ---
+    // --- GRUPO 3: CPV / CMV (Custos Variáveis) ---
     if (mainGroup === 3) {
         return { column: 'purchases_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPOS 4 e 5: DESPESAS OPERACIONAIS ---
+    // --- GRUPOS 4 e 5: DESPESAS OPERACIONAIS FIXAS E FINANCEIRAS ---
     if (mainGroup === 4 || mainGroup === 5) {
         return { column: 'expenses_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPO 6: RECEITAS NÃO OPERACIONAIS ---
+    // --- GRUPO 6: RECEITAS NÃO OPERACIONAIS (Venda de imobilizado, juros recebidos) ---
     if (mainGroup === 6) {
         return { column: 'revenue_other', value: Math.abs(value), entryType: 'REVENUE', description: descricao };
     }
 
-    // --- GRUPO 14: MOVIMENTOS DIVERSOS ---
+    // --- GRUPO 14: MOVIMENTOS DIVERSOS / PATRIMONIAIS (NÃO VAI PARA A DRE) ---
     if (mainGroup === 14) {
-        if (/EMPR[EÉ]STIMO|FINANCIAMENTO|AMORTIZA/i.test(desc)) return null;
-        return { column: 'expenses_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
+        // Ignorar completamente para não afetar o Lucro Líquido
+        return null; 
     }
 
     return null;
@@ -1145,7 +1134,8 @@ app.post('/api/report', async (req, res) => {
         const query = `
             SELECT
                 DATE_FORMAT(period_start,'%Y-%m') as month_key,
-                SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)+COALESCE(revenue_other,0)) as total_revenue,
+                SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)) as operational_revenue,
+                SUM(COALESCE(revenue_other,0)) as other_revenue,
                 SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as total_taxes,
                 SUM(COALESCE(tax_icms,0)) as tax_icms,
                 SUM(COALESCE(tax_pis,0)) as tax_pis,
@@ -1163,19 +1153,31 @@ app.post('/api/report', async (req, res) => {
 
         const [rows] = await pool.execute(query, [req.body.startDate, req.body.endDate]);
 
-        const months = rows.map(row => ({
-            monthKey: row.month_key,
-            totalRevenue: Number(row.total_revenue),
-            totalTaxes: Number(row.total_taxes),
-            tax_icms: Number(row.tax_icms),
-            tax_pis: Number(row.tax_pis),
-            tax_cofins: Number(row.tax_cofins),
-            tax_iss: Number(row.tax_iss),
-            tax_irpj_csll: Number(row.tax_irpj_csll),
-            totalPurchases: Number(row.total_purchases),
-            totalExpenses: Number(row.total_expenses),
-            profit: Number(row.total_revenue) - Number(row.total_taxes) - Number(row.total_purchases) - Number(row.total_expenses)
-        }));
+        const months = rows.map(row => {
+            const faturamento = Number(row.operational_revenue);
+            const outrasReceitas = Number(row.other_revenue);
+            const impostos = Number(row.total_taxes);
+            const compras = Number(row.total_purchases);
+            const despesas = Number(row.total_expenses);
+            
+            // Lucro = (Faturamento + Outras) - Impostos - Custos
+            const profit = (faturamento + outrasReceitas) - impostos - compras - despesas;
+
+            return {
+                monthKey: row.month_key,
+                totalRevenue: faturamento, 
+                otherRevenue: outrasReceitas,
+                totalTaxes: impostos,
+                tax_icms: Number(row.tax_icms),
+                tax_pis: Number(row.tax_pis),
+                tax_cofins: Number(row.tax_cofins),
+                tax_iss: Number(row.tax_iss),
+                tax_irpj_csll: Number(row.tax_irpj_csll),
+                totalPurchases: compras,
+                totalExpenses: despesas,
+                profit: profit
+            };
+        });
 
         const summary = months.reduce(
             (acc, curr) => ({
@@ -1711,19 +1713,21 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/dashboard/performance/:companyId', async (req, res) => {
-    try {
-        const [r] = await pool.execute(`
-            SELECT
-                SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)+COALESCE(revenue_other,0)) as revenue,
-                SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as taxes,
-                SUM(COALESCE(purchases_total,0)+COALESCE(expenses_total,0)) as costs
-            FROM monthly_entries WHERE company_id = ?`,
-            [req.params.companyId]
-        );
-        res.json(r[0]);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+        // Ajuste a rota de performance do dashboard para não somar 'revenue_other' no faturamento bruto
+        app.get('/api/dashboard/performance/:companyId', async (req, res) => {
+            try {
+                const [r] = await pool.execute(`
+                    SELECT
+                        SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)) as operational_revenue,
+                        SUM(COALESCE(revenue_other,0)) as other_revenue,
+                        SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as taxes,
+                        SUM(COALESCE(purchases_total,0)+COALESCE(expenses_total,0)) as costs
+                    FROM monthly_entries WHERE company_id = ?`,
+                    [req.params.companyId]
+                );
+                res.json(r[0]);
+            } catch (e) { res.status(500).json({ error: e.message }); }
+        });
 
 // =================================================================================
 // INICIALIZAÇÃO
