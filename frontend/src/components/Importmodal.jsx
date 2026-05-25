@@ -106,7 +106,6 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
 
         let successCount = 0;
         let errorCount = 0;
-        let lastSuccessSummary = null;
 
         // Envia um a um para não sobrecarregar a API
         for (let i = 0; i < csvBatch.length; i++) {
@@ -123,8 +122,14 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
                 successCount++;
-                lastSuccessSummary = res.data.summary;
-                setImportedLogs(prev =>[...prev, { period: item.period, result: res.data.summary.resultado }]);
+                
+                // SALVA OS DADOS DA AUDITORIA DA IA
+                setImportedLogs(prev =>[...prev, { 
+                    period: item.period, 
+                    result: res.data.summary.resultado,
+                    receitas: res.data.summary.receitas,
+                    audit: res.data.summary.audit
+                }]);
             } catch (err) {
                 errorCount++;
                 console.error(`Erro no arquivo do mês ${item.period}:`, err);
@@ -178,17 +183,44 @@ const ImportModal = ({ isOpen, onClose, companyId, apiBase, onSuccess }) => {
                                         </div>
                                     </div>
 
-                                    {/* Resumo se tiver logs */}
+                                    {/* Resumo Inteligente com Auditoria */}
                                     {importedLogs.length > 0 && (
-                                        <div className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-5 pt-4 pb-2">Meses Processados ({importedLogs.length})</p>
-                                            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                        <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden mt-4">
+                                            <div className="bg-slate-100 px-5 pt-4 pb-3 border-b border-slate-200 flex items-center justify-between">
+                                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Info size={14} className="text-blue-500"/> Relatório de Auditoria da IA
+                                                </p>
+                                                <span className="text-[9px] font-bold text-slate-400">{importedLogs.length} mês(es) processados</span>
+                                            </div>
+                                            
+                                            <div className="max-h-64 overflow-y-auto divide-y divide-slate-200 p-2 space-y-2">
                                                 {importedLogs.map((log, i) => (
-                                                    <div key={i} className="flex justify-between items-center px-5 py-3 bg-white">
-                                                        <span className="text-xs font-bold text-slate-600">{log.period}</span>
-                                                        <span className={`text-xs font-mono font-black ${log.result >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                            {formatBRL(log.result)}
-                                                        </span>
+                                                    <div key={i} className="bg-white border border-slate-100 p-4 rounded-xl shadow-sm">
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <span className="text-sm font-black text-slate-800 tracking-tighter bg-slate-100 px-3 py-1 rounded-md">{log.period}</span>
+                                                            <div className="text-right">
+                                                                <span className="text-[9px] text-slate-400 font-bold uppercase block mb-0.5">Lucro Calculado</span>
+                                                                <span className={`text-sm font-mono font-black ${log.result >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                    {formatBRL(log.result)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {log.audit && (
+                                                            <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-dashed border-slate-100">
+                                                                <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium">
+                                                                    <CheckCircle2 size={14} className="text-emerald-500 shrink-0"/> 
+                                                                    <span><b>{log.audit.processed} contas</b> validadas na DRE (Faturamento: {formatBRL(log.receitas)})</span>
+                                                                </div>
+                                                                
+                                                                {log.audit.ignored > 0 && (
+                                                                    <div className="flex items-center gap-2 text-[11px] text-amber-700 font-medium bg-amber-50 p-2 rounded-lg border border-amber-100">
+                                                                        <AlertCircle size={14} className="text-amber-500 shrink-0"/> 
+                                                                        <span>Filtro de Inteligência aplicou expurgo em <b>{log.audit.ignored} contas</b> não operacionais (Grupo 14/Empréstimos). Valor isolado do fluxo: <b>{formatBRL(log.audit.ignoredValue)}</b>.</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>

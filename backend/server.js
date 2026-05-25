@@ -178,9 +178,6 @@ const parseBalanceteRows = (text) => {
     return accounts;
 };
 
-// ---------------------------------------------------------------------------------
-// ALGORITMO DE RECONCILIAÇÃO (CORRIGE DADOS OCULTOS DO ERP)
-// ---------------------------------------------------------------------------------
 const reconcileHiddenAccounts = (accounts) => {
     const normalize = (cls) => cls ? cls.replace(/,/g, '.').split('.').map(num => parseInt(num, 10)).join('.') : '';
     accounts.forEach(a => { a.normCls = normalize(a.classificacao); });
@@ -242,9 +239,6 @@ const findLeafAccounts = (accounts) => {
     });
 };
 
-// ---------------------------------------------------------------------------------
-// PADRÕES DE MAPEAMENTO DE RECEITAS E IMPOSTOS
-// ---------------------------------------------------------------------------------
 const REVENUE_PATTERNS = [
     { regex: /VEND.*PROD|PRODUTO\s*ACABADO|MERCAD/i, column: 'revenue_product' },
     { regex: /SERVI[ÇC]|SERVICE/i,                    column: 'revenue_service' },
@@ -266,14 +260,6 @@ const TAX_PATTERNS = [
     { regex: /\bFUNTELL\b/i,                              column: 'tax_funtell'         },
 ];
 
-// ---------------------------------------------------------------------------------
-// MAPEAMENTO DE CONTAS → COLUNAS (V3 CORRIGIDA — Doc 2)
-// ---------------------------------------------------------------------------------
-/**
- * AJUSTE FINAL: CORREÇÃO DE POLARIDADE (ENTRADA = RECEITA)
- * Substitua a função mapAccountToColumns no seu importController.js por esta:
- */
-
 const mapAccountToColumns = (account) => {
     const { classificacao, descricao, entrada, saida } = account;
     const desc = descricao.toUpperCase();
@@ -293,7 +279,6 @@ const mapAccountToColumns = (account) => {
         value = entrada > 0 ? entrada : saida;
     }
 
-    // --- GRUPO 1: RECEITAS OPERACIONAIS (Faturamento Real) ---
     if (mainGroup === 1) {
         if (value < 0) {
             return { column: 'expenses_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
@@ -305,7 +290,6 @@ const mapAccountToColumns = (account) => {
         return { column, value, entryType: 'REVENUE', description: descricao };
     }
 
-    // --- GRUPO 2: DEDUÇÕES E IMPOSTOS SOBRE VENDAS ---
     if (mainGroup === 2) {
         let column = 'purchases_total'; 
         for (const p of TAX_PATTERNS) {
@@ -315,25 +299,20 @@ const mapAccountToColumns = (account) => {
         return { column, value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPO 3: CPV / CMV (Custos Variáveis) ---
     if (mainGroup === 3) {
         return { column: 'purchases_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPOS 4 e 5: DESPESAS OPERACIONAIS FIXAS E FINANCEIRAS ---
     if (mainGroup === 4 || mainGroup === 5) {
         return { column: 'expenses_total', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
-    // --- GRUPO 6: RECEITAS NÃO OPERACIONAIS (Venda de imobilizado, juros recebidos) ---
     if (mainGroup === 6) {
         return { column: 'revenue_other', value: Math.abs(value), entryType: 'REVENUE', description: descricao };
     }
 
-    // --- GRUPO 14: MOVIMENTOS DIVERSOS / PATRIMONIAIS (NÃO VAI PARA A DRE) ---
     if (mainGroup === 14) {
-        // Ignorar completamente para não afetar o Lucro Líquido
-        return null; 
+        return { column: 'patrimonial_movements', value: Math.abs(value), entryType: 'EXPENSE', description: descricao };
     }
 
     return null;
@@ -530,7 +509,7 @@ const initDb = async () => {
             UNIQUE KEY unique_goal (company_id, year)
         )`);
 
-        // Colunas adicionais em sales_channels (migrações seguras)
+        // Colunas adicionais
         await addColumnIfNotExists(conn, 'sales_channels', 'ipi_out_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'difal_out_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'ir_csll_percent DECIMAL(5,2) DEFAULT 0.00');
@@ -541,6 +520,9 @@ const initDb = async () => {
         await addColumnIfNotExists(conn, 'sales_channels', 'fixed_expenses_rate_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'payroll_rate_percent DECIMAL(5,2) DEFAULT 0.00');
         await addColumnIfNotExists(conn, 'sales_channels', 'administrative_cost_percent DECIMAL(5,2) DEFAULT 0.00');
+        
+        // NOVO: Adiciona a coluna de Empréstimos/Patrimônio
+        await addColumnIfNotExists(conn, 'monthly_entries', 'patrimonial_movements DECIMAL(15,2) DEFAULT 0.00');
 
         await conn.execute(`INSERT IGNORE INTO users (id, full_name, email, password_hash, role) VALUES (1, 'Vector Master', 'admin@vector.com', '123456', 'SUPER_ADMIN')`);
         conn.release();
@@ -1127,9 +1109,7 @@ app.delete('/api/entries', async (req, res) => {
 // =================================================================================
 app.post('/api/report', async (req, res) => {
     try {
-        const companyIds = Array.isArray(req.body.companyIds) && req.body.companyIds.length > 0
-            ? req.body.companyIds
-            : [req.body.companyId || 0];
+        const companyIds = Array.isArray(req.body.companyIds) && req.body.companyIds.length > 0 ? req.body.companyIds : [req.body.companyId || 0];
 
         const query = `
             SELECT
@@ -1137,18 +1117,14 @@ app.post('/api/report', async (req, res) => {
                 SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)) as operational_revenue,
                 SUM(COALESCE(revenue_other,0)) as other_revenue,
                 SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as total_taxes,
-                SUM(COALESCE(tax_icms,0)) as tax_icms,
-                SUM(COALESCE(tax_pis,0)) as tax_pis,
-                SUM(COALESCE(tax_cofins,0)) as tax_cofins,
-                SUM(COALESCE(tax_iss,0)) as tax_iss,
-                SUM(COALESCE(tax_irpj,0)+COALESCE(tax_csll,0)) as tax_irpj_csll,
+                SUM(COALESCE(tax_icms,0)) as tax_icms, SUM(COALESCE(tax_pis,0)) as tax_pis, SUM(COALESCE(tax_cofins,0)) as tax_cofins,
+                SUM(COALESCE(tax_iss,0)) as tax_iss, SUM(COALESCE(tax_irpj,0)+COALESCE(tax_csll,0)) as tax_irpj_csll,
                 SUM(COALESCE(purchases_total,0)) as total_purchases,
-                SUM(COALESCE(expenses_total,0)) as total_expenses
+                SUM(COALESCE(expenses_total,0)) as total_expenses,
+                SUM(COALESCE(patrimonial_movements,0)) as patrimonial_movements
             FROM monthly_entries
-            WHERE company_id IN (${companyIds.join(',')})
-              AND period_start >= ? AND period_start <= ?
-            GROUP BY month_key
-            ORDER BY month_key ASC
+            WHERE company_id IN (${companyIds.join(',')}) AND period_start >= ? AND period_start <= ?
+            GROUP BY month_key ORDER BY month_key ASC
         `;
 
         const [rows] = await pool.execute(query, [req.body.startDate, req.body.endDate]);
@@ -1159,45 +1135,31 @@ app.post('/api/report', async (req, res) => {
             const impostos = Number(row.total_taxes);
             const compras = Number(row.total_purchases);
             const despesas = Number(row.total_expenses);
+            const patrimonial = Number(row.patrimonial_movements);
             
-            // Lucro = (Faturamento + Outras) - Impostos - Custos
+            // O Lucro não desconta o patrimonial
             const profit = (faturamento + outrasReceitas) - impostos - compras - despesas;
 
             return {
-                monthKey: row.month_key,
-                totalRevenue: faturamento, 
-                otherRevenue: outrasReceitas,
-                totalTaxes: impostos,
-                tax_icms: Number(row.tax_icms),
-                tax_pis: Number(row.tax_pis),
-                tax_cofins: Number(row.tax_cofins),
-                tax_iss: Number(row.tax_iss),
-                tax_irpj_csll: Number(row.tax_irpj_csll),
-                totalPurchases: compras,
-                totalExpenses: despesas,
-                profit: profit
+                monthKey: row.month_key, totalRevenue: faturamento, otherRevenue: outrasReceitas,
+                totalTaxes: impostos, tax_icms: Number(row.tax_icms), tax_pis: Number(row.tax_pis),
+                tax_cofins: Number(row.tax_cofins), tax_iss: Number(row.tax_iss), tax_irpj_csll: Number(row.tax_irpj_csll),
+                totalPurchases: compras, totalExpenses: despesas, patrimonialMovements: patrimonial, profit: profit
             };
         });
 
         const summary = months.reduce(
             (acc, curr) => ({
-                totalRevenue: acc.totalRevenue + curr.totalRevenue,
-                totalProfit: acc.totalProfit + curr.profit,
-                totalTaxes: acc.totalTaxes + curr.totalTaxes,
-                totalCosts: acc.totalCosts + curr.totalPurchases + curr.totalExpenses
+                totalRevenue: acc.totalRevenue + curr.totalRevenue, totalProfit: acc.totalProfit + curr.profit,
+                totalTaxes: acc.totalTaxes + curr.totalTaxes, totalCosts: acc.totalCosts + curr.totalPurchases + curr.totalExpenses,
+                totalPatrimonial: acc.totalPatrimonial + curr.patrimonialMovements
             }),
-            { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0 }
+            { totalRevenue: 0, totalProfit: 0, totalTaxes: 0, totalCosts: 0, totalPatrimonial: 0 }
         );
 
         const [categories] = await pool.execute(`
-            SELECT c.name, ed.type, SUM(ed.amount) as total
-            FROM entry_details ed
-            JOIN monthly_entries me ON ed.entry_id = me.id
-            JOIN categories c ON ed.category_id = c.id
-            WHERE me.company_id IN (${companyIds.join(',')})
-              AND me.period_start >= ? AND me.period_start <= ?
-            GROUP BY c.name, ed.type
-            ORDER BY total DESC`,
+            SELECT c.name, ed.type, SUM(ed.amount) as total FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id
+            WHERE me.company_id IN (${companyIds.join(',')}) AND me.period_start >= ? AND me.period_start <= ? GROUP BY c.name, ed.type ORDER BY total DESC`,
             [req.body.startDate, req.body.endDate]
         );
 
@@ -1580,12 +1542,25 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         const columnTotals = {};
         const detailMap = {};
+        
+        // --- VARIÁVEIS DE AUDITORIA INTELIGENTE ---
+        let processedCount = 0;
+        let ignoredCount = 0;
+        let ignoredValue = 0;
 
         // Processa APENAS as contas analíticas (folhas) para evitar duplicação de valores
         for (const account of leafAccounts) {
             const mapped = mapAccountToColumns(account);
+            
             if (!mapped) continue;
 
+            if (mapped.column === 'patrimonial_movements') {
+                ignoredCount++;
+                ignoredValue += mapped.value;
+            } else {
+                processedCount++; 
+            }
+            
             const { column, value, entryType, description } = mapped;
             columnTotals[column] = (columnTotals[column] || 0) + value;
 
@@ -1621,7 +1596,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
             amountOrZero(columnTotals.tax_csll),          amountOrZero(columnTotals.tax_irpj),
             amountOrZero(columnTotals.tax_additional_irpj), amountOrZero(columnTotals.tax_fust),
             amountOrZero(columnTotals.tax_funtell),       amountOrZero(columnTotals.purchases_total),
-            amountOrZero(columnTotals.expenses_total)
+            amountOrZero(columnTotals.expenses_total),    amountOrZero(columnTotals.patrimonial_movements)
         ];
 
         let entryId;
@@ -1632,7 +1607,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
                     revenue_resale=?, revenue_product=?, revenue_service=?, revenue_rent=?, revenue_other=?,
                     tax_icms=?, tax_difal=?, tax_iss=?, tax_pis=?, tax_cofins=?, tax_csll=?,
                     tax_irpj=?, tax_additional_irpj=?, tax_fust=?, tax_funtell=?,
-                    purchases_total=?, expenses_total=?, notes=?
+                    purchases_total=?, expenses_total=?, patrimonial_movements=?, notes=?
                 WHERE id=?`,
                 [...entryData, 'Balancete Importado (V3)', entryId]
             );
@@ -1644,8 +1619,8 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
                     revenue_resale, revenue_product, revenue_service, revenue_rent, revenue_other,
                     tax_icms, tax_difal, tax_iss, tax_pis, tax_cofins, tax_csll,
                     tax_irpj, tax_additional_irpj, tax_fust, tax_funtell,
-                    purchases_total, expenses_total, notes
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                    purchases_total, expenses_total, patrimonial_movements, notes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [companyId, periodStart, periodEnd, ...entryData, 'Balancete Importado (V3)']
             );
             entryId = ins.insertId;
@@ -1660,21 +1635,30 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         await conn.commit();
 
-        const totalReceitas = Object.entries(columnTotals)
-            .filter(([k]) => k.startsWith('revenue_'))
-            .reduce((a, [, v]) => a + v, 0);
+        // Pega Faturamento APENAS Operacional para o Log
+        const totalReceitas = amountOrZero(columnTotals.revenue_resale) + amountOrZero(columnTotals.revenue_product) + amountOrZero(columnTotals.revenue_service) + amountOrZero(columnTotals.revenue_rent);
+        
+        const totalOutras = amountOrZero(columnTotals.revenue_other);
+        
         const totalImpostos = Object.entries(columnTotals)
             .filter(([k]) => k.startsWith('tax_'))
             .reduce((a, [, v]) => a + v, 0);
+            
         const totalDespesas = amountOrZero(columnTotals.purchases_total) + amountOrZero(columnTotals.expenses_total);
 
+        // RETORNA A AUDITORIA JUNTO COM O SUCESSO
         res.json({
             success: true,
             summary: {
                 receitas: totalReceitas,
                 impostos: totalImpostos,
                 despesas: totalDespesas,
-                resultado: totalReceitas - totalImpostos - totalDespesas
+                resultado: (totalReceitas + totalOutras) - totalImpostos - totalDespesas,
+                audit: {
+                    processed: processedCount,
+                    ignored: ignoredCount,
+                    ignoredValue: ignoredValue
+                }
             }
         });
     } catch (error) {
@@ -1713,21 +1697,21 @@ app.get('/api/reports/partners-ranking', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-        // Ajuste a rota de performance do dashboard para não somar 'revenue_other' no faturamento bruto
-        app.get('/api/dashboard/performance/:companyId', async (req, res) => {
-            try {
-                const [r] = await pool.execute(`
-                    SELECT
-                        SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)) as operational_revenue,
-                        SUM(COALESCE(revenue_other,0)) as other_revenue,
-                        SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as taxes,
-                        SUM(COALESCE(purchases_total,0)+COALESCE(expenses_total,0)) as costs
-                    FROM monthly_entries WHERE company_id = ?`,
-                    [req.params.companyId]
-                );
-                res.json(r[0]);
-            } catch (e) { res.status(500).json({ error: e.message }); }
-        });
+// Ajuste a rota de performance do dashboard para não somar 'revenue_other' no faturamento bruto
+app.get('/api/dashboard/performance/:companyId', async (req, res) => {
+    try {
+        const [r] = await pool.execute(`
+            SELECT
+                SUM(COALESCE(revenue_resale,0)+COALESCE(revenue_product,0)+COALESCE(revenue_service,0)+COALESCE(revenue_rent,0)) as operational_revenue,
+                SUM(COALESCE(revenue_other,0)) as other_revenue,
+                SUM(COALESCE(tax_icms,0)+COALESCE(tax_difal,0)+COALESCE(tax_pis,0)+COALESCE(tax_cofins,0)+COALESCE(tax_iss,0)+COALESCE(tax_irpj,0)+COALESCE(tax_additional_irpj,0)+COALESCE(tax_csll,0)+COALESCE(tax_fust,0)+COALESCE(tax_funtell,0)) as taxes,
+                SUM(COALESCE(purchases_total,0)+COALESCE(expenses_total,0)) as costs
+            FROM monthly_entries WHERE company_id = ?`,
+            [req.params.companyId]
+        );
+        res.json(r[0]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // =================================================================================
 // INICIALIZAÇÃO

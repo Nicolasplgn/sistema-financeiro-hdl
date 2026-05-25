@@ -1,12 +1,11 @@
-// ARQUIVO: src/pages/Dashboard.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   Wallet, TrendingUp, TrendingDown, Building2, Printer, 
   PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
-  RotateCcw, BarChart3, Layers, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, Trophy, Medal, Target, Activity, Receipt, FileCode,
-  CalendarRange
+  BarChart3, Layers, FileSpreadsheet, MessageCircle,
+  Users, ShoppingBag, Trophy, Medal, Target, Receipt, FileCode,
+  CalendarRange, Info
 } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -357,13 +356,41 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
           </div>
 
           {/* GRID DE KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
               <PremiumCard title="Faturamento Bruto" value={formatCurrency(summary.totalRevenue)} sub={groupId ? "Holding Total" : "Receita Bruta"} icon={Wallet} color="text-blue-600"/>
+              
               <PremiumCard title="Margem Líquida" value={`${marginValue.toFixed(1)}%`} sub={groupId ? "Média Ponderada" : "Rentabilidade"} icon={Target} color="text-indigo-600">
                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden"><motion.div initial={{width:0}} animate={{width:`${Math.min(marginValue, 100)}%`}} transition={{duration:1.5}} className="h-full bg-indigo-600" /></div>
               </PremiumCard>
+              
               <PremiumCard title="Lucro Líquido" value={formatCurrency(summary.totalProfit)} sub="Resultado Final" icon={TrendingUp} color={summary.totalProfit >= 0 ? "text-emerald-600" : "text-rose-600"}/>
+              
               <PremiumCard title="Fluxo de Saída" value={formatCurrency(summary.totalTaxes + summary.totalCosts)} sub="Custos + Impostos" icon={TrendingDown} color="text-rose-600"/>
+
+              {/* --- NOVO CARD PARA EXPLICAR O EMPRÉSTIMO (SÓ APARECE SE TIVER VALOR) --- */}
+              {summary.totalPatrimonial > 0 && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm flex flex-col justify-between h-full group relative">
+                    <div className="min-w-0">
+                        <div className="w-fit p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 mb-2"><Building2 size={16} /></div>
+                        <p className="text-amber-700 dark:text-amber-500 text-[9px] font-black uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                            Saídas de Capital
+                            <div className="relative inline-block cursor-help">
+                                <Info size={12} className="text-amber-500 hover:text-amber-700 transition-colors" />
+                                {/* Tooltip explicativo */}
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-900 text-white text-[10px] p-3 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                                    <p className="font-bold mb-1">Pagamentos Fora da DRE</p>
+                                    Este valor refere-se a pagamentos de empréstimos, dividendos e dívidas passadas (Grupo 14). Eles afetam o caixa, mas NÃO entram no cálculo de Despesas para não distorcer o seu Lucro Operacional (DRE).
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                                </div>
+                            </div>
+                        </p>
+                        <h3 className="text-sm font-black tracking-tighter truncate text-amber-700 dark:text-amber-500" title={formatCurrency(summary.totalPatrimonial)}>
+                            {formatCurrency(summary.totalPatrimonial)}
+                        </h3>
+                        <p className="text-[9px] text-amber-600 dark:text-amber-600 font-medium truncate">Empréstimos / Dívidas</p>
+                    </div>
+                  </motion.div>
+              )}
           </div>
 
           {/* GRÁFICOS PRINCIPAIS */}
@@ -440,7 +467,7 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 shadow-sm"><div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 dark:text-white text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><Receipt className="text-slate-900 dark:text-slate-300" size={20}/> Matriz Tributária</h3><button onClick={() => openTable('TAXES', 'Detalhamento de Impostos')} className="p-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 transition-all"><TableIcon size={18}/></button></div><div className="h-80"><Bar data={{ labels: months.map(m => m.monthKey), datasets:[{ label: 'ICMS', data: months.map(m => m.tax_icms), backgroundColor: '#2563EB' }, { label: 'PIS', data: months.map(m => m.tax_pis), backgroundColor: '#F59E0B' }, { label: 'COFINS', data: months.map(m => m.tax_cofins), backgroundColor: '#10B981' }, { label: 'ISS', data: months.map(m => m.tax_iss), backgroundColor: '#8B5CF6' }, { label: 'IRPJ/CSLL', data: months.map(m => m.tax_irpj_csll), backgroundColor: '#EF4444' }] }} options={fullInteractionOptions} /></div></div>
           </div>
 
-          {/* RANKING */}
+          {/* RANKING (SÓ APARECE SE NÃO FOR GRUPO CONSOLIDADO) */}
           {!groupId && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-[550px]"><div className="flex justify-between items-center mb-10 text-[11px] font-black uppercase tracking-[0.3em] text-slate-900 dark:text-white italic"><span className="flex items-center gap-3"><Users className="text-blue-600" size={22}/> Top Parceiros</span><Trophy className="text-yellow-500" size={22}/></div><div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{rankingData.clients.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 font-black">Vazio</div>) : (rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />))}</div></div>
@@ -464,7 +491,7 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                                 {detailModal.type === 'CATEGORIES' && Array.isArray(detailModal.data) ? (
                                     detailModal.data.map((r, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 text-base uppercase italic">{r.name}</td><td className="py-6 text-right font-mono font-black text-slate-900 dark:text-white text-lg">{formatCurrency(r.total)}</td></tr>))
-                                ) : detailModal.type === 'TAXES' && detailModal.data ? ([{l: 'ICMS', v: detailModal.data.tax_icms || 0}, {l: 'PIS', v: detailModal.data.tax_pis || 0}, {l: 'COFINS', v: detailModal.data.tax_cofins || 0}, {l: 'ISS', v: detailModal.data.tax_iss || 0}, {l: 'IRPJ/CSLL', v: detailModal.data.tax_irpj_csll || 0}].sort((a,b)=>b.v-a.v).map((r, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 uppercase italic text-base">{r.l}</td><td className="py-6 text-right font-mono font-black text-blue-600 dark:text-blue-400 text-lg">{formatCurrency(r.v)}</td></tr>))
+                                ) : detailModal.type === 'TAXES' && detailModal.data ? ([{l: 'ICMS', v: detailModal.data.tax_icms || 0}, {l: 'PIS', v: detailModal.data.tax_pis || 0}, {l: 'COFINS', v: detailModal.data.tax_cofins || 0}, {l: 'ISS', v: detailModal.data.tax_iss || 0}, {l: 'IRPJ', v: detailModal.data.tax_irpj || 0}, {l: 'CSLL', v: detailModal.data.tax_csll || 0}].sort((a,b)=>b.v-a.v).map((r, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 uppercase italic text-base">{r.l}</td><td className="py-6 text-right font-mono font-black text-blue-600 dark:text-blue-400 text-lg">{formatCurrency(r.v)}</td></tr>))
                                 ) : detailModal.type === 'EVOLUTION' && Array.isArray(detailModal.data) ? (
                                     detailModal.data.map((r, i) => {
                                         const value = detailModal.dataType === 'EXPENSE' 
