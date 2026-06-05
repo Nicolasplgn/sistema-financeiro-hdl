@@ -61,21 +61,29 @@ const logAction = async (userId, userName, action, details) => {
 };
 
 // =================================================================================
-// FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE DRE CSV
+// FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE DRE CSV (ATUALIZADA PARA QUESTOR)
 // =================================================================================
 const parseDreValue = (val) => {
     if (val === null || val === undefined) return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
 
-    const str = val.toString().replace(/"/g, '').replace(/\u00a0/g, '').trim();
+    let str = val.toString().replace(/"/g, '').replace(/\u00a0/g, '').trim();
     if (str === '-' || str === '') return 0;
 
+    // Se estiver entre parênteses, é negativo (Padrão Questor)
+    let isNegative = false;
+    if (str.startsWith('(') && str.endsWith(')')) {
+        isNegative = true;
+        str = str.substring(1, str.length - 1);
+    }
+
     const direct = parseFloat(str);
-    if (!isNaN(direct) && !str.includes(',')) return direct;
+    if (!isNaN(direct) && !str.includes(',')) return isNegative ? -direct : direct;
 
     const cleaned = str.replace(/R\$\s*/gi, '').replace(/\./g, '').replace(',', '.').trim();
     const num = parseFloat(cleaned);
-    return isNaN(num) ? 0 : num;
+    
+    return isNaN(num) ? 0 : (isNegative ? -num : num);
 };
 
 const parseDreCSVToMatrix = (buffer) => {
@@ -554,7 +562,6 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Todas as rotas abaixo exigem token válido
 app.use(authenticateToken);
 
 // =================================================================================
@@ -623,7 +630,7 @@ app.post('/api/admin/impersonate', async (req, res) => {
 });
 
 // =================================================================================
-// ROTAS: DESPESAS FIXAS
+// ROTAS: DESPESAS FIXAS, FOLHA, PRÓ-LABORE, CANAIS, MATERIAIS, PRODUTOS
 // =================================================================================
 app.get('/api/fixed-expenses', async (req, res) => {
     try {
@@ -649,9 +656,6 @@ app.delete('/api/fixed-expenses/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: FOLHA DE PAGAMENTO
-// =================================================================================
 app.get('/api/payroll', async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT * FROM payroll_expenses WHERE company_id = ? ORDER BY employee_name', [req.query.companyId]);
@@ -676,9 +680,6 @@ app.delete('/api/payroll/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: PRÓ-LABORE
-// =================================================================================
 app.get('/api/prolabore', async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT * FROM prolabore_expenses WHERE company_id = ? ORDER BY partner_name', [req.query.companyId]);
@@ -703,9 +704,6 @@ app.delete('/api/prolabore/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: CANAIS DE VENDA
-// =================================================================================
 app.get('/api/sales-channels', async (req, res) => {
     try {
         const [rows] = await pool.execute(
@@ -764,9 +762,6 @@ app.delete('/api/sales-channels/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: MATERIAIS E PRODUTOS
-// =================================================================================
 app.post('/api/materials', async (req, res) => {
     try {
         const [r] = await pool.execute(
@@ -815,6 +810,37 @@ app.delete('/api/products/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// =================================================================================
+// ROTAS: FICHA TÉCNICA DO PRODUTO (RECEITA / BOM)
+// =================================================================================
+app.get('/api/product-boms/:productId', async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT pb.*, m.name, m.price_national, m.price_imported, m.ipi_percent 
+            FROM product_boms pb 
+            JOIN materials m ON pb.material_id = m.id 
+            WHERE pb.product_id = ?`, 
+            [req.params.productId]
+        );
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/product-boms', async (req, res) => {
+    try {
+        await pool.execute('DELETE FROM product_boms WHERE product_id = ?', [req.body.product_id]);
+        if (req.body.materials && req.body.materials.length > 0) {
+            for (const mat of req.body.materials) {
+                await pool.execute(
+                    'INSERT INTO product_boms (product_id, material_id, quantity) VALUES (?, ?, ?)',
+                    [req.body.product_id, mat.material_id, mat.quantity]
+                );
+            }
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/price-calc', async (req, res) => {
     try {
         const r = await PricingService.calculateProductPrice(req.query.productId, req.query.channelId);
@@ -822,9 +848,6 @@ app.get('/api/price-calc', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: UTILITÁRIOS
-// =================================================================================
 app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     try {
         const r = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${req.params.cnpj.replace(/\D/g, '')}`);
@@ -837,9 +860,6 @@ app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Erro CNPJ' }); }
 });
 
-// =================================================================================
-// ROTAS: GRUPOS DE EMPRESAS
-// =================================================================================
 app.get('/api/groups', async (req, res) => {
     try {
         const [r] = await pool.execute('SELECT * FROM company_groups ORDER BY name');
@@ -862,9 +882,6 @@ app.delete('/api/groups/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// ROTAS: EMPRESAS
-// =================================================================================
 app.get('/api/companies', async (req, res) => {
     try {
         let query = 'SELECT * FROM companies';
@@ -919,9 +936,6 @@ app.delete('/api/companies/:id', async (req, res) => {
     } finally { conn.release(); }
 });
 
-// =================================================================================
-// ROTAS: PARCEIROS E CATEGORIAS
-// =================================================================================
 app.get('/api/partners/:companyId', async (req, res) => {
     try {
         const [r] = await pool.execute('SELECT * FROM partners WHERE company_id = ? ORDER BY name', [req.params.companyId]);
@@ -953,9 +967,6 @@ app.get('/api/categories', async (req, res) => {
     } catch (e) { res.status(500).json(e); }
 });
 
-// =================================================================================
-// MÓDULO: LANÇAMENTOS MENSAIS
-// =================================================================================
 app.get('/api/entries', async (req, res) => {
     try {
         const [r] = await pool.execute(
@@ -1137,7 +1148,6 @@ app.post('/api/report', async (req, res) => {
             const despesas = Number(row.total_expenses);
             const patrimonial = Number(row.patrimonial_movements);
             
-            // O Lucro não desconta o patrimonial
             const profit = (faturamento + outrasReceitas) - impostos - compras - despesas;
 
             return {
@@ -1158,8 +1168,14 @@ app.post('/api/report', async (req, res) => {
         );
 
         const [categories] = await pool.execute(`
-            SELECT c.name, ed.type, SUM(ed.amount) as total FROM entry_details ed JOIN monthly_entries me ON ed.entry_id = me.id JOIN categories c ON ed.category_id = c.id
-            WHERE me.company_id IN (${companyIds.join(',')}) AND me.period_start >= ? AND me.period_start <= ? GROUP BY c.name, ed.type ORDER BY total DESC`,
+            SELECT COALESCE(ed.description, c.name) as name, ed.type, SUM(ed.amount) as total
+            FROM entry_details ed
+            JOIN monthly_entries me ON ed.entry_id = me.id
+            LEFT JOIN categories c ON ed.category_id = c.id
+            WHERE me.company_id IN (${companyIds.join(',')})
+              AND me.period_start >= ? AND me.period_start <= ?
+            GROUP BY COALESCE(ed.description, c.name), ed.type
+            ORDER BY total DESC`,
             [req.body.startDate, req.body.endDate]
         );
 
@@ -1290,12 +1306,12 @@ app.get('/api/reports/dre/detailed', async (req, res) => {
         const { companyId, year } = req.query;
 
         const [details] = await pool.execute(`
-            SELECT c.name as category_name, ed.type, SUM(ed.amount) as total_value
+            SELECT COALESCE(ed.description, c.name) as category_name, ed.type, SUM(ed.amount) as total_value
             FROM entry_details ed
             JOIN monthly_entries me ON ed.entry_id = me.id
-            JOIN categories c ON ed.category_id = c.id
+            LEFT JOIN categories c ON ed.category_id = c.id
             WHERE me.company_id=? AND YEAR(me.period_start)=?
-            GROUP BY c.name, ed.type
+            GROUP BY COALESCE(ed.description, c.name), ed.type
             ORDER BY ed.type DESC, total_value DESC`,
             [companyId, year]
         );
@@ -1375,7 +1391,7 @@ app.get('/api/audit-logs', async (req, res) => {
 });
 
 // =================================================================================
-// IMPORTAÇÃO: DRE (CSV / XLSX)
+// IMPORTAÇÃO: DRE (CSV / XLSX) - ATUALIZADO PARA QUESTOR
 // =================================================================================
 app.post('/api/import/dre', upload.single('file'), async (req, res) => {
     const conn = await pool.getConnection();
@@ -1390,8 +1406,8 @@ app.post('/api/import/dre', upload.single('file'), async (req, res) => {
             data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
         }
 
-        const monthsMap = { 3:'01',4:'02',5:'03',6:'04',7:'05',8:'06',9:'07',10:'08',11:'09',12:'10',13:'11',14:'12' };
-        const year = (req.file.originalname.match(/20\d{2}/) || [new Date().getFullYear()])[0];
+        const yearMatch = req.file.originalname.match(/20\d{2}/);
+        let year = yearMatch ? yearMatch[0] : new Date().getFullYear().toString();
 
         const categoriesMap = {};
         const catsToCreate = [
@@ -1409,43 +1425,100 @@ app.post('/api/import/dre', upload.single('file'), async (req, res) => {
         await conn.beginTransaction();
         const monthData = {};
 
+        // VAMOS DESCOBRIR SE A DRE É MENSAL (12 COLUNAS) OU ANUAL CONSOLIDADA QUESTOR
+        let isAnnualConsolidated = false;
+        let consolidatedColumnIndex = -1;
+        
+        for (let i = 0; i < Math.min(10, data.length); i++) {
+            if (data[i] && data[i].length >= 4) {
+                for(let col = 0; col < data[i].length; col++) {
+                    if (typeof data[i][col] === 'string' && data[i][col].includes('31/12')) {
+                        isAnnualConsolidated = true;
+                        consolidatedColumnIndex = col;
+                        
+                        const headerYearMatch = data[i][col].match(/31\/12\/(\d{4})/);
+                        if (headerYearMatch) { year = headerYearMatch[1]; }
+                        break;
+                    }
+                }
+                if (isAnnualConsolidated) break;
+            }
+        }
+
+        const monthsMap = { 3:'01',4:'02',5:'03',6:'04',7:'05',8:'06',9:'07',10:'08',11:'09',12:'10',13:'11',14:'12' };
+
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
-            if (!row || !row[0]) continue;
-            const accountName = row[0].toString().toLowerCase();
+            if (!row) continue; 
+
+            let accountName = '';
+            let rawDescription = '';
+            
+            if (isAnnualConsolidated) {
+                if (!row[3] || row[0] === 'S') continue; 
+                rawDescription = row[3].toString();
+                accountName = rawDescription.toLowerCase();
+            } else {
+                if (!row[0]) continue;
+                rawDescription = row[0].toString();
+                accountName = rawDescription.toLowerCase();
+            }
 
             let catId = null; let type = null; let dbColumn = null;
-            if (accountName.includes('receita bruta') || accountName.includes('faturamento')) {
+            
+            if (accountName.includes('receita') || accountName.includes('prestação de serviços') || accountName.includes('faturamento') || accountName.includes('serviços prestados')) {
                 catId = categoriesMap['Receita Bruta (Importada)']; type = 'REVENUE'; dbColumn = 'revenue_product';
-            } else if (accountName.includes('impostos') || accountName.includes('deduções') || accountName.includes('deducoes')) {
+            } else if (accountName.includes('impostos') || accountName.includes('deduções') || accountName.includes('icms') || accountName.includes('pis') || accountName.includes('cofins') || accountName.includes('iss') || accountName.includes('vendas canceladas')) {
                 catId = categoriesMap['Impostos e Deduções']; type = 'EXPENSE'; dbColumn = 'tax_icms';
-            } else if (accountName.includes('custos variáveis') || accountName.includes('custos variaveis') || accountName.includes('cmv') || accountName.includes('csv')) {
+            } else if (accountName.includes('custos') || accountName.includes('custo') || accountName.includes('cmv') || accountName.includes('csv') || accountName.includes('compra de insumos') || accountName.includes('locação de postes')) {
                 catId = categoriesMap['Custos Variáveis']; type = 'EXPENSE'; dbColumn = 'purchases_total';
-            } else if (accountName.includes('despesas operacionais')) {
+            } else if (accountName.includes('despesas') || accountName.includes('administrativas') || accountName.includes('veiculos') || accountName.includes('financeiras') || accountName.includes('tributarias') || accountName.includes('água') || accountName.includes('energia') || accountName.includes('aluguel') || accountName.includes('honorários') || accountName.includes('serviços profissionais')) {
                 catId = categoriesMap['Despesas Operacionais']; type = 'EXPENSE'; dbColumn = 'expenses_total';
             }
+            
             if (!catId) continue;
 
-            for (let colIndex = 3; colIndex <= 14; colIndex++) {
-                const month = monthsMap[colIndex];
-                if (!month) continue;
-                const periodStart = `${year}-${month}-01`;
-                const value = parseDreValue(row[colIndex]);
+            if (isAnnualConsolidated) {
+                const periodStart = `${year}-12-01`; 
+                const parsedVal = parseDreValue(row[consolidatedColumnIndex]);
+                const value = Math.abs(parsedVal); 
                 if (value === 0) continue;
 
-                if (!monthData[periodStart]) {
-                    monthData[periodStart] = { revenue: 0, taxes: 0, purchases: 0, expenses: 0, detailMap: {} };
-                }
+                if (!monthData[periodStart]) monthData[periodStart] = { revenue: 0, taxes: 0, purchases: 0, expenses: 0, detailMap: {} };
+                
                 if (dbColumn === 'revenue_product') monthData[periodStart].revenue += value;
                 if (dbColumn === 'tax_icms')        monthData[periodStart].taxes += value;
                 if (dbColumn === 'purchases_total') monthData[periodStart].purchases += value;
                 if (dbColumn === 'expenses_total')  monthData[periodStart].expenses += value;
 
-                const key = `${catId}_${type}_${row[0].toString().toUpperCase()}`;
+                const key = `${catId}_${type}_${rawDescription.toUpperCase()}`;
                 if (!monthData[periodStart].detailMap[key]) {
-                    monthData[periodStart].detailMap[key] = { category_id: catId, type, amount: 0, description: row[0].toString() };
+                    monthData[periodStart].detailMap[key] = { category_id: catId, type, amount: 0, description: rawDescription };
                 }
                 monthData[periodStart].detailMap[key].amount += value;
+
+            } else {
+                for (let colIndex = 3; colIndex <= 14; colIndex++) {
+                    const month = monthsMap[colIndex];
+                    if (!month) continue;
+                    const periodStart = `${year}-${month}-01`;
+                    const parsedVal = parseDreValue(row[colIndex]);
+                    const value = Math.abs(parsedVal);
+                    if (value === 0) continue;
+
+                    if (!monthData[periodStart]) monthData[periodStart] = { revenue: 0, taxes: 0, purchases: 0, expenses: 0, detailMap: {} };
+                    
+                    if (dbColumn === 'revenue_product') monthData[periodStart].revenue += value;
+                    if (dbColumn === 'tax_icms')        monthData[periodStart].taxes += value;
+                    if (dbColumn === 'purchases_total') monthData[periodStart].purchases += value;
+                    if (dbColumn === 'expenses_total')  monthData[periodStart].expenses += value;
+
+                    const key = `${catId}_${type}_${rawDescription.toUpperCase()}`;
+                    if (!monthData[periodStart].detailMap[key]) {
+                        monthData[periodStart].detailMap[key] = { category_id: catId, type, amount: 0, description: rawDescription };
+                    }
+                    monthData[periodStart].detailMap[key].amount += value;
+                }
             }
         }
 
@@ -1463,14 +1536,14 @@ app.post('/api/import/dre', upload.single('file'), async (req, res) => {
                 await conn.execute(`
                     UPDATE monthly_entries SET revenue_product=?, tax_icms=?, purchases_total=?, expenses_total=?, notes=?
                     WHERE id=?`,
-                    [mData.revenue, mData.taxes, mData.purchases, mData.expenses, `Importado Auto ${year}`, entryId]
+                    [mData.revenue, mData.taxes, mData.purchases, mData.expenses, `DRE Questor Importada ${year}`, entryId]
                 );
                 await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
             } else {
                 const [ins] = await conn.execute(`
                     INSERT INTO monthly_entries (company_id, period_start, period_end, revenue_product, tax_icms, purchases_total, expenses_total, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [req.body.companyId, periodStart, periodEnd, mData.revenue, mData.taxes, mData.purchases, mData.expenses, `Importado Auto ${year}`]
+                    [req.body.companyId, periodStart, periodEnd, mData.revenue, mData.taxes, mData.purchases, mData.expenses, `DRE Questor Importada ${year}`]
                 );
                 entryId = ins.insertId;
             }
@@ -1485,15 +1558,15 @@ app.post('/api/import/dre', upload.single('file'), async (req, res) => {
         }
 
         await conn.commit();
-        res.json({ success: true, message: `DRE ${ext.toUpperCase()} processado com sucesso!` });
+        res.json({ success: true, message: `DRE ${ext.toUpperCase()} processada e lançada no painel!` });
     } catch (error) {
         await conn.rollback();
-        res.status(500).json({ error: "Erro na importação: " + error.message });
+        res.status(500).json({ error: "Erro na importação da DRE: " + error.message });
     } finally { conn.release(); }
 });
 
 // =================================================================================
-// IMPORTAÇÃO: BALANCETE CSV (V3 CORRIGIDA)
+// IMPORTAÇÃO: BALANCETE CSV
 // =================================================================================
 app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
     const conn = await pool.getConnection();
@@ -1511,7 +1584,6 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
         const allAccounts = parseBalanceteRows(text);
         if (allAccounts.length === 0) throw new Error("Nenhuma conta lida. Verifique o formato do arquivo.");
 
-        // Reconcilia contas ocultas e obtém apenas as analíticas (folhas)
         const reconciledAccounts = reconcileHiddenAccounts(allAccounts);
         const leafAccounts = findLeafAccounts(reconciledAccounts);
 
@@ -1543,12 +1615,10 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
         const columnTotals = {};
         const detailMap = {};
         
-        // --- VARIÁVEIS DE AUDITORIA INTELIGENTE ---
         let processedCount = 0;
         let ignoredCount = 0;
         let ignoredValue = 0;
 
-        // Processa APENAS as contas analíticas (folhas) para evitar duplicação de valores
         for (const account of leafAccounts) {
             const mapped = mapAccountToColumns(account);
             
@@ -1635,18 +1705,13 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         await conn.commit();
 
-        // Pega Faturamento APENAS Operacional para o Log
         const totalReceitas = amountOrZero(columnTotals.revenue_resale) + amountOrZero(columnTotals.revenue_product) + amountOrZero(columnTotals.revenue_service) + amountOrZero(columnTotals.revenue_rent);
-        
         const totalOutras = amountOrZero(columnTotals.revenue_other);
-        
         const totalImpostos = Object.entries(columnTotals)
             .filter(([k]) => k.startsWith('tax_'))
             .reduce((a, [, v]) => a + v, 0);
-            
         const totalDespesas = amountOrZero(columnTotals.purchases_total) + amountOrZero(columnTotals.expenses_total);
 
-        // RETORNA A AUDITORIA JUNTO COM O SUCESSO
         res.json({
             success: true,
             summary: {
@@ -1713,9 +1778,6 @@ app.get('/api/dashboard/performance/:companyId', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// =================================================================================
-// INICIALIZAÇÃO
-// =================================================================================
 initDb().then(() => {
     app.listen(PORT, '0.0.0.0', () => console.log(`🚀 VECTOR SERVER OPERACIONAL NA PORTA ${PORT}`));
 });

@@ -29,14 +29,22 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
     margemLucro: 0
   });
 
+  // --- FUNÇÃO PARA INJETAR O TOKEN DE LOGIN NAS REQUISIÇÕES ---
+  const getAuthHeader = () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('hdl_token');
+    return { headers: { Authorization: `Bearer ${token}` } };
+  };
+
   // --- CARREGAR DADOS INICIAIS ---
   useEffect(() => {
     if (!selectedCompanyId) return;
     const loadData = async () => {
       try {
+        const config = getAuthHeader(); // Pega o token para não dar erro 401
+        
         const [resProd, resChan] = await Promise.all([
-          axios.get(`${BASE_URL}/api/products-list?companyId=${selectedCompanyId}`),
-          axios.get(`${BASE_URL}/api/sales-channels?companyId=${selectedCompanyId}`)
+          axios.get(`${BASE_URL}/api/products-list?companyId=${selectedCompanyId}`, config),
+          axios.get(`${BASE_URL}/api/sales-channels?companyId=${selectedCompanyId}`, config)
         ]);
         setProducts(resProd.data);
         setChannels(resChan.data);
@@ -51,17 +59,21 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
     const fetchBaseValues = async () => {
       setFetchingBase(true);
       try {
+        const config = getAuthHeader(); // Pega o token para não dar erro 401
+        
         const res = await axios.get(`${BASE_URL}/api/price-calc`, {
-          params: { productId: selectedProduct, channelId: selectedChannel }
+          params: { productId: selectedProduct, channelId: selectedChannel },
+          ...config
         });
+        
         const data = res.data;
         if (data.status === 'success') {
             setSim({
               custoIndustrial: parseFloat(data.custos.industrial_total),
               frete: parseFloat(data.parametros_canal.frete_valor),
-              icmsOut: parseFloat(data.parametros_canal.icms_out),
-              pisOut: parseFloat(data.parametros_canal.pis_out),
-              cofinsOut: parseFloat(data.parametros_canal.cofins_out),
+              icmsOut: parseFloat(data.parametros_canal.impostos_total), // Ajustado para pegar o total agregado
+              pisOut: parseFloat(data.parametros_canal.pis_out || 0),
+              cofinsOut: parseFloat(data.parametros_canal.cofins_out || 0),
               comissao: parseFloat(data.parametros_canal.comissao),
               marketing: parseFloat(data.parametros_canal.marketing),
               custoFixo: parseFloat(data.parametros_canal.custo_fixo),
@@ -77,7 +89,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
 
   // --- FUNÇÃO: CARREGAR PADRÃO (BASEADO NAS PLANILHAS) ---
   const handleLoadStandard = () => {
-    if(!confirm("Aplicar o Padrão Industrial (Lucro Real)? Isso substituirá os valores atuais.")) return;
+    if(!window.confirm("Aplicar o Padrão Industrial (Lucro Real)? Isso substituirá os valores atuais.")) return;
     
     setSim(prev => ({
         ...prev,
@@ -100,6 +112,7 @@ const PricingSimulator = ({ apiBase, selectedCompanyId }) => {
 
   // --- CÁLCULOS (Engine) ---
   const results = useMemo(() => {
+    // Como a nova API já pode somar tudo no icmsOut se for simples, vamos garantir a flexibilidade
     const totalImpostos = sim.icmsOut + sim.pisOut + sim.cofinsOut;
     const totalOperacional = sim.comissao + sim.marketing + sim.custoFixo + sim.financeiro + sim.administrativo;
     const totalDeducoesPerc = totalImpostos + totalOperacional + sim.margemLucro;

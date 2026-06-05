@@ -379,7 +379,7 @@ const Dashboard = ({ companyId, groupId, apiBase }) => {
                                 {/* Tooltip explicativo */}
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-900 text-white text-[10px] p-3 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
                                     <p className="font-bold mb-1">Pagamentos Fora da DRE</p>
-                                    Este valor refere-se a pagamentos de empréstimos, dividendos e dívidas passadas (Grupo 14). Eles afetam o caixa, mas NÃO entram no cálculo de Despesas para não distorcer o seu Lucro Operacional (DRE).
+                                    Este valor refere-se a pagamentos de empréstimos, dividendos e dívidas passadas. Eles afetam o caixa, mas NÃO entram no cálculo de Despesas para não distorcer o seu Lucro Operacional (DRE).
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
                                 </div>
                             </div>
