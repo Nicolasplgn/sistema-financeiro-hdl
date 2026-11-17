@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 import Dashboard from './pages/Dashboard';
-import DRE from './pages/DRE';
+import DRE from './pages/dre/DrePage';
 import IntelligenceHub from './pages/IntelligenceHub';
 import AnalyticalProjections from './pages/AnalyticalProjections';
 import FinancialEntries from './pages/FinancialEntries';
@@ -87,7 +87,7 @@ const Sidebar = ({ user, active, onSelect, collapsed, onToggle, mobileOpen, onCl
     {mobileOpen && <div className="fixed inset-0 bg-slate-950/50 z-40 lg:hidden" onClick={onCloseMobile} />}
     <aside
       className={cx(
-        'fixed lg:static inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-ink transition-all duration-200 shrink-0',
+        'print:hidden fixed lg:static inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-ink transition-all duration-200 shrink-0',
         collapsed ? 'lg:w-[68px]' : 'lg:w-64',
         mobileOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:translate-x-0',
       )}
@@ -314,7 +314,7 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-canvas text-ink">
+    <div className="flex h-screen overflow-hidden bg-canvas text-ink print:block print:h-auto print:overflow-visible">
       <Sidebar
         user={user}
         active={active}
@@ -326,8 +326,8 @@ const App = () => {
         onLogout={logout}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 shrink-0 border-b border-line bg-surface flex items-center gap-3 px-4 sm:px-6">
+      <div className="flex-1 flex flex-col min-w-0 print:block">
+        <header className="print:hidden h-16 shrink-0 border-b border-line bg-surface flex items-center gap-3 px-4 sm:px-6">
           <button className="lg:hidden p-2 -ml-2 rounded-lg text-ink-2 hover:bg-surface-3" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Menu size={20} /></button>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink truncate flex items-center gap-2"><item.icon size={16} className="text-brand shrink-0" /> {item.label}</p>
@@ -339,7 +339,7 @@ const App = () => {
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto scroll-thin">{renderPage()}</main>
+        <main className="flex-1 overflow-y-auto scroll-thin print:overflow-visible">{renderPage()}</main>
       </div>
     </div>
   );

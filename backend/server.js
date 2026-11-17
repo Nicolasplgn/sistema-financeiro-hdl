@@ -15,6 +15,7 @@ const {
 } = require('./services/questorService');
 
 const createPricingRouter = require('./routes/pricing');
+const createReportsRouter = require('./routes/reports');
 const { ensurePricingSchema } = require('./services/pricing/schema');
 
 const app = express();
@@ -109,6 +110,12 @@ const parseDreCSVToMatrix = (buffer) => {
 // =================================================================================
 // FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE BALANCETE CSV (MOTOR 3.0 SUPER-BLINDADO)
 // =================================================================================
+// Texto de arquivo importado: UTF-8 quando válido, senão Latin-1 (exportações do Windows).
+const decodeText = (buffer) => {
+    const utf8 = buffer.toString('utf8');
+    return utf8.includes('�') ? buffer.toString('latin1') : utf8.replace(/^﻿/, '');
+};
+
 const parseBalanceteBR = (str) => {
     if (!str || typeof str !== 'string' || str.trim() === '') return 0;
     let cleaned = str.trim().replace(/R\$\s?/gi, '');
@@ -561,6 +568,7 @@ app.post('/api/admin/impersonate', async (req, res) => {
 // Fórmulas em services/pricing/engine.js, conferidas contra as planilhas em tests/.
 // =================================================================================
 app.use('/api', createPricingRouter({ pool, upload, logAction }));
+app.use('/api', createReportsRouter({ pool }));
 
 app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     try {
@@ -1317,7 +1325,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) throw new Error("Nenhum arquivo enviado.");
         const companyId = req.body.companyId;
-        const text = req.file.buffer.toString('latin1');
+        const text = decodeText(req.file.buffer);
         let period = req.body.period || detectPeriodFromCSV(text);
         if (!period) throw new Error("Período não encontrado. Informe o campo 'period' no body.");
 
