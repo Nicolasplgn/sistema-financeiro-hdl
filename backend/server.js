@@ -14,7 +14,8 @@ const {
     generateNFSeXML
 } = require('./services/questorService');
 
-const PricingService = require('./services/PricingService');
+const createPricingRouter = require('./routes/pricing');
+const { ensurePricingSchema } = require('./services/pricing/schema');
 
 const app = express();
 const PORT = 4000;
@@ -383,70 +384,8 @@ const initDb = async () => {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
-        await conn.execute(`CREATE TABLE IF NOT EXISTS fixed_expenses (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED NOT NULL,
-            name VARCHAR(150) NOT NULL,
-            amount DECIMAL(15,2) DEFAULT 0.00,
-            category VARCHAR(50) DEFAULT 'GERAL',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS payroll_expenses (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED NOT NULL,
-            employee_name VARCHAR(150) NOT NULL,
-            role VARCHAR(100),
-            total_cost DECIMAL(15,2) DEFAULT 0.00,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS prolabore_expenses (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED NOT NULL,
-            partner_name VARCHAR(150) NOT NULL,
-            total_cost DECIMAL(15,2) DEFAULT 0.00,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS sales_channels (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED NOT NULL,
-            name VARCHAR(150),
-            icms_out_percent DECIMAL(5,2) DEFAULT 0,
-            pis_out_percent DECIMAL(5,2) DEFAULT 0,
-            cofins_out_percent DECIMAL(5,2) DEFAULT 0,
-            commission_percent DECIMAL(5,2) DEFAULT 0,
-            marketing_percent DECIMAL(5,2) DEFAULT 0,
-            profit_margin_percent DECIMAL(5,2) DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS materials (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED,
-            name VARCHAR(150),
-            ncm VARCHAR(20),
-            price_national DECIMAL(15,2),
-            price_imported DECIMAL(15,2),
-            ipi_percent DECIMAL(5,2),
-            is_national BOOLEAN
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS products (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            company_id BIGINT UNSIGNED,
-            name VARCHAR(150),
-            sku VARCHAR(50),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        await conn.execute(`CREATE TABLE IF NOT EXISTS product_boms (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            product_id INT,
-            material_id INT,
-            quantity DECIMAL(10,4)
-        )`);
+        // Tabelas e colunas do módulo de precificação (custos, canais, insumos, produtos, fichas).
+        await ensurePricingSchema(conn);
 
         await conn.execute(`CREATE TABLE IF NOT EXISTS monthly_entries (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -517,18 +456,6 @@ const initDb = async () => {
             UNIQUE KEY unique_goal (company_id, year)
         )`);
 
-        // Colunas adicionais
-        await addColumnIfNotExists(conn, 'sales_channels', 'ipi_out_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'difal_out_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'ir_csll_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'default_rate_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'freight_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'freight_value DECIMAL(15,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'financial_cost_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'fixed_expenses_rate_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'payroll_rate_percent DECIMAL(5,2) DEFAULT 0.00');
-        await addColumnIfNotExists(conn, 'sales_channels', 'administrative_cost_percent DECIMAL(5,2) DEFAULT 0.00');
-        
         // NOVO: Adiciona a coluna de Empréstimos/Patrimônio
         await addColumnIfNotExists(conn, 'monthly_entries', 'patrimonial_movements DECIMAL(15,2) DEFAULT 0.00');
 
@@ -630,223 +557,10 @@ app.post('/api/admin/impersonate', async (req, res) => {
 });
 
 // =================================================================================
-// ROTAS: DESPESAS FIXAS, FOLHA, PRÓ-LABORE, CANAIS, MATERIAIS, PRODUTOS
+// ROTAS: PRECIFICAÇÃO (custos de estrutura, painel de rateio, fichas, markup, tributos)
+// Fórmulas em services/pricing/engine.js, conferidas contra as planilhas em tests/.
 // =================================================================================
-app.get('/api/fixed-expenses', async (req, res) => {
-    try {
-        const [rows] = await pool.execute('SELECT * FROM fixed_expenses WHERE company_id = ? ORDER BY name', [req.query.companyId]);
-        res.json(rows);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/fixed-expenses', async (req, res) => {
-    try {
-        const [result] = await pool.execute(
-            'INSERT INTO fixed_expenses (company_id, name, amount) VALUES (?, ?, ?)',
-            [req.body.company_id, req.body.name, req.body.amount]
-        );
-        res.json({ success: true, id: result.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/fixed-expenses/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM fixed_expenses WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/payroll', async (req, res) => {
-    try {
-        const [rows] = await pool.execute('SELECT * FROM payroll_expenses WHERE company_id = ? ORDER BY employee_name', [req.query.companyId]);
-        res.json(rows);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/payroll', async (req, res) => {
-    try {
-        const [result] = await pool.execute(
-            'INSERT INTO payroll_expenses (company_id, employee_name, role, total_cost) VALUES (?, ?, ?, ?)',
-            [req.body.company_id, req.body.employee_name, req.body.role, req.body.total_cost]
-        );
-        res.json({ success: true, id: result.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/payroll/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM payroll_expenses WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/prolabore', async (req, res) => {
-    try {
-        const [rows] = await pool.execute('SELECT * FROM prolabore_expenses WHERE company_id = ? ORDER BY partner_name', [req.query.companyId]);
-        res.json(rows);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/prolabore', async (req, res) => {
-    try {
-        const [result] = await pool.execute(
-            'INSERT INTO prolabore_expenses (company_id, partner_name, total_cost) VALUES (?, ?, ?)',
-            [req.body.company_id, req.body.partner_name, req.body.total_cost]
-        );
-        res.json({ success: true, id: result.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/prolabore/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM prolabore_expenses WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/sales-channels', async (req, res) => {
-    try {
-        const [rows] = await pool.execute(
-            'SELECT * FROM sales_channels WHERE company_id = ? OR company_id = 1 ORDER BY name',
-            [req.query.companyId || 0]
-        );
-        const unique = [];
-        const names = new Set();
-        rows
-            .sort((a, b) => (a.company_id == req.query.companyId ? -1 : 1))
-            .forEach(r => { if (!names.has(r.name)) { names.add(r.name); unique.push(r); } });
-        res.json(unique);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/sales-channels', async (req, res) => {
-    try {
-        const [resDb] = await pool.execute(
-            'INSERT INTO sales_channels (company_id, name) VALUES (?, ?)',
-            [req.body.company_id, req.body.name]
-        );
-        res.json({ success: true, id: resDb.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/sales-channels/:id', async (req, res) => {
-    try {
-        await pool.execute(`
-            UPDATE sales_channels SET
-                icms_out_percent=?, pis_out_percent=?, cofins_out_percent=?, ipi_out_percent=?,
-                difal_out_percent=?, ir_csll_percent=?, commission_percent=?, marketing_percent=?,
-                freight_percent=?, default_rate_percent=?, financial_cost_percent=?,
-                fixed_expenses_rate_percent=?, payroll_rate_percent=?, administrative_cost_percent=?,
-                profit_margin_percent=?, freight_value=?
-            WHERE id=?`,
-            [
-                req.body.icms_out_percent || 0, req.body.pis_out_percent || 0,
-                req.body.cofins_out_percent || 0, req.body.ipi_out_percent || 0,
-                req.body.difal_out_percent || 0, req.body.ir_csll_percent || 0,
-                req.body.commission_percent || 0, req.body.marketing_percent || 0,
-                req.body.freight_percent || 0, req.body.default_rate_percent || 0,
-                req.body.financial_cost_percent || 0, req.body.fixed_expenses_rate_percent || 0,
-                req.body.payroll_rate_percent || 0, req.body.administrative_cost_percent || 0,
-                req.body.profit_margin_percent || 0, req.body.freight_value || 0,
-                req.params.id
-            ]
-        );
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/sales-channels/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM sales_channels WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/materials', async (req, res) => {
-    try {
-        const [r] = await pool.execute(
-            'INSERT INTO materials (company_id, name, ncm, price_national, price_imported, ipi_percent, is_national) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [req.body.company_id, req.body.name, req.body.ncm, req.body.price_national, req.body.price_imported, req.body.ipi_percent, req.body.is_national ? 1 : 0]
-        );
-        res.json({ success: true, id: r.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/materials-full', async (req, res) => {
-    try {
-        const [r] = await pool.execute('SELECT * FROM materials WHERE company_id = ? ORDER BY id DESC LIMIT 100', [req.query.companyId]);
-        res.json(r);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/materials/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM materials WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/products', async (req, res) => {
-    try {
-        const [r] = await pool.execute(
-            'INSERT INTO products (company_id, name, sku) VALUES (?, ?, ?)',
-            [req.body.company_id, req.body.name, req.body.sku]
-        );
-        res.json({ success: true, id: r.insertId });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/products-list', async (req, res) => {
-    try {
-        const [r] = await pool.execute('SELECT id, name, sku FROM products WHERE company_id = ? ORDER BY name ASC', [req.query.companyId || 0]);
-        res.json(r);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/products/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM products WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// =================================================================================
-// ROTAS: FICHA TÉCNICA DO PRODUTO (RECEITA / BOM)
-// =================================================================================
-app.get('/api/product-boms/:productId', async (req, res) => {
-    try {
-        const [rows] = await pool.execute(`
-            SELECT pb.*, m.name, m.price_national, m.price_imported, m.ipi_percent 
-            FROM product_boms pb 
-            JOIN materials m ON pb.material_id = m.id 
-            WHERE pb.product_id = ?`, 
-            [req.params.productId]
-        );
-        res.json(rows);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/product-boms', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM product_boms WHERE product_id = ?', [req.body.product_id]);
-        if (req.body.materials && req.body.materials.length > 0) {
-            for (const mat of req.body.materials) {
-                await pool.execute(
-                    'INSERT INTO product_boms (product_id, material_id, quantity) VALUES (?, ?, ?)',
-                    [req.body.product_id, mat.material_id, mat.quantity]
-                );
-            }
-        }
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/price-calc', async (req, res) => {
-    try {
-        const r = await PricingService.calculateProductPrice(req.query.productId, req.query.channelId);
-        res.json(r);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+app.use('/api', createPricingRouter({ pool, upload, logAction }));
 
 app.get('/api/utils/cnpj/:cnpj', async (req, res) => {
     try {
@@ -924,7 +638,8 @@ app.delete('/api/companies/:id', async (req, res) => {
         await conn.query('SET FOREIGN_KEY_CHECKS = 0');
         await conn.execute('DELETE FROM entry_details WHERE entry_id IN (SELECT id FROM monthly_entries WHERE company_id = ?)', [req.params.id]);
         await conn.execute('DELETE FROM product_boms WHERE product_id IN (SELECT id FROM products WHERE company_id = ?)', [req.params.id]);
-        const tables = ['monthly_entries', 'fixed_expenses', 'payroll_expenses', 'prolabore_expenses', 'sales_channels', 'materials', 'products', 'partners', 'budget_goals'];
+        await conn.execute('DELETE FROM product_channel_settings WHERE product_id IN (SELECT id FROM products WHERE company_id = ?)', [req.params.id]);
+        const tables = ['monthly_entries', 'fixed_expenses', 'payroll_expenses', 'prolabore_expenses', 'sales_channels', 'materials', 'products', 'partners', 'budget_goals', 'pricing_settings'];
         for (const t of tables) { await conn.execute(`DELETE FROM ${t} WHERE company_id = ?`, [req.params.id]); }
         await conn.execute('UPDATE users SET company_id = NULL WHERE company_id = ?', [req.params.id]);
         await conn.execute('DELETE FROM companies WHERE id = ?', [req.params.id]);
