@@ -16,6 +16,7 @@ const {
 
 const createPricingRouter = require('./routes/pricing');
 const createReportsRouter = require('./routes/reports');
+const questorBalancete = require('./services/import/questorBalancete');
 const { ensurePricingSchema } = require('./services/pricing/schema');
 
 const app = express();
@@ -110,12 +111,6 @@ const parseDreCSVToMatrix = (buffer) => {
 // =================================================================================
 // FUNÇÕES UTILITÁRIAS — IMPORTAÇÃO DE BALANCETE CSV (MOTOR 3.0 SUPER-BLINDADO)
 // =================================================================================
-// Texto de arquivo importado: UTF-8 quando válido, senão Latin-1 (exportações do Windows).
-const decodeText = (buffer) => {
-    const utf8 = buffer.toString('utf8');
-    return utf8.includes('�') ? buffer.toString('latin1') : utf8.replace(/^﻿/, '');
-};
-
 const parseBalanceteBR = (str) => {
     if (!str || typeof str !== 'string' || str.trim() === '') return 0;
     let cleaned = str.trim().replace(/R\$\s?/gi, '');
@@ -1325,19 +1320,33 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) throw new Error("Nenhum arquivo enviado.");
         const companyId = req.body.companyId;
-        const text = decodeText(req.file.buffer);
-        let period = req.body.period || detectPeriodFromCSV(text);
-        if (!period) throw new Error("Período não encontrado. Informe o campo 'period' no body.");
+        const text = questorBalancete.decodeText(req.file.buffer);
+
+        // Balancete do Questor ("Balancete - Débito Crédito" em CSV) ou layout antigo.
+        const questorData = questorBalancete.detect(text) ? questorBalancete.parse(text) : null;
+        const filePeriod = questorData?.periodo;
+        if (filePeriod && filePeriod.mesInicio !== filePeriod.mesFim) {
+            throw new Error(`Este balancete vai de ${filePeriod.inicio.split('-').reverse().join('/')} a ${filePeriod.fim.split('-').reverse().join('/')}. Exporte um mês por vez no Questor.`);
+        }
+        if (filePeriod && req.body.period && req.body.period !== filePeriod.mesFim) {
+            throw new Error(`O arquivo é do mês ${filePeriod.mesFim.split('-').reverse().join('/')}, mas foi escolhido ${req.body.period.split('-').reverse().join('/')}.`);
+        }
+        let period = req.body.period || filePeriod?.mesFim || detectPeriodFromCSV(text);
+        if (!period) throw new Error("Não achei o mês no arquivo. Escolha o mês da competência.");
 
         const periodStart = `${period}-01`;
         const [y, m] = period.split('-');
         const periodEnd = `${y}-${m}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
 
-        const allAccounts = parseBalanceteRows(text);
-        if (allAccounts.length === 0) throw new Error("Nenhuma conta lida. Verifique o formato do arquivo.");
-
-        const reconciledAccounts = reconcileHiddenAccounts(allAccounts);
-        const leafAccounts = findLeafAccounts(reconciledAccounts);
+        let mappedAccounts;
+        if (questorData) {
+            mappedAccounts = questorData.mapped;
+        } else {
+            const allAccounts = parseBalanceteRows(text);
+            if (allAccounts.length === 0) throw new Error("Nenhuma conta lida. Verifique o formato do arquivo.");
+            const leafAccounts = findLeafAccounts(reconcileHiddenAccounts(allAccounts));
+            mappedAccounts = leafAccounts.map(mapAccountToColumns).filter(Boolean);
+        }
 
         const CAT_DEFS = {
             revenue_product:     { name: 'Venda de Produtos (Balancete)',      type: 'REVENUE' },
@@ -1371,10 +1380,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
         let ignoredCount = 0;
         let ignoredValue = 0;
 
-        for (const account of leafAccounts) {
-            const mapped = mapAccountToColumns(account);
-            
-            if (!mapped) continue;
+        for (const mapped of mappedAccounts) {
 
             if (mapped.column === 'patrimonial_movements') {
                 ignoredCount++;
@@ -1431,7 +1437,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
                     tax_irpj=?, tax_additional_irpj=?, tax_fust=?, tax_funtell=?,
                     purchases_total=?, expenses_total=?, patrimonial_movements=?, notes=?
                 WHERE id=?`,
-                [...entryData, 'Balancete Importado (V3)', entryId]
+                [...entryData, questorData ? 'Balancete Questor importado' : 'Balancete Importado (V3)', entryId]
             );
             await conn.execute('DELETE FROM entry_details WHERE entry_id = ?', [entryId]);
         } else {
@@ -1443,7 +1449,7 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
                     tax_irpj, tax_additional_irpj, tax_fust, tax_funtell,
                     purchases_total, expenses_total, patrimonial_movements, notes
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-                [companyId, periodStart, periodEnd, ...entryData, 'Balancete Importado (V3)']
+                [companyId, periodStart, periodEnd, ...entryData, questorData ? 'Balancete Questor importado' : 'Balancete Importado (V3)']
             );
             entryId = ins.insertId;
         }
@@ -1466,6 +1472,16 @@ app.post('/api/import/balancete', upload.single('file'), async (req, res) => {
 
         res.json({
             success: true,
+            layout: questorData ? 'questor' : 'generico',
+            period,
+            questor: questorData ? {
+                empresa: questorData.empresa,
+                contas_lidas: questorData.audit.contas_lidas,
+                analiticas: questorData.audit.analiticas,
+                usadas: questorData.audit.usadas,
+                classificadas_pelo_saldo: questorData.audit.por_saldo,
+                confere_com_totais: questorData.audit.conferencia?.confere ?? null,
+            } : null,
             summary: {
                 receitas: totalReceitas,
                 impostos: totalImpostos,

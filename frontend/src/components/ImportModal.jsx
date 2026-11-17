@@ -59,7 +59,7 @@ const ImportModal = ({ open, onClose, companyId, onSuccess }) => {
       try {
         const res = await http.post('/import/balancete', fd);
         ok++;
-        results.push({ period: item.period, ok: true, result: res.data.summary?.resultado, receitas: res.data.summary?.receitas, audit: res.data.summary?.audit });
+        results.push({ period: res.data.period || item.period, ok: true, result: res.data.summary?.resultado, receitas: res.data.summary?.receitas, audit: res.data.summary?.audit, layout: res.data.layout, questor: res.data.questor });
       } catch (e) {
         fail++;
         results.push({ period: item.period, ok: false, error: errorMessage(e, 'Falha ao ler o arquivo.') });
@@ -76,7 +76,7 @@ const ImportModal = ({ open, onClose, companyId, onSuccess }) => {
     : format === 'excel'
       ? <><Button onClick={() => setFormat(null)}>Voltar</Button><Button variant="primary" icon={Upload} onClick={uploadExcel} disabled={!excelFile || status === 'uploading'}>Importar DRE</Button></>
       : format === 'csv'
-        ? <><Button onClick={() => setFormat(null)}>Voltar</Button><Button variant="primary" icon={Upload} onClick={uploadBatch} disabled={status === 'uploading' || batch.some((b) => !b.period || !b.file)}>Importar {batch.length} mês(es)</Button></>
+        ? <><Button onClick={() => setFormat(null)}>Voltar</Button><Button variant="primary" icon={Upload} onClick={uploadBatch} disabled={status === 'uploading' || batch.some((b) => !b.file)}>Importar {batch.length} arquivo(s)</Button></>
         : <Button onClick={close}>Cancelar</Button>;
 
   return (
@@ -92,7 +92,20 @@ const ImportModal = ({ open, onClose, companyId, onSuccess }) => {
                 <span className="font-medium">{l.period}</span>
                 {l.ok ? <span className={`num ${l.result >= 0 ? 'text-pos' : 'text-neg'}`}>Resultado {brl(l.result)}</span> : <span className="text-neg">{l.error}</span>}
               </div>
-              {l.ok && l.audit && (
+              {l.ok && l.questor && (
+                <div className="text-xs text-ink-2 mt-1 space-y-0.5">
+                  <p>Balancete do Questor{l.questor.empresa ? ` · ${l.questor.empresa}` : ''}</p>
+                  <p>{l.questor.usadas} contas de resultado usadas de {l.questor.analiticas} analíticas · faturamento {brl(l.receitas)}</p>
+                  {l.questor.confere_com_totais !== null && (
+                    <p className={l.questor.confere_com_totais ? 'text-pos' : 'text-neg'}>
+                      {l.questor.confere_com_totais ? 'Débitos e créditos conferem com os totais do Questor.' : 'Atenção: a soma das contas não fecha com os totais do Questor.'}
+                    </p>
+                  )}
+                  {l.questor.classificadas_pelo_saldo.length > 0 && <p className="text-warn">Classificadas pelo saldo (nome não reconhecido): {l.questor.classificadas_pelo_saldo.join(', ')}</p>}
+                  {l.audit?.ignored > 0 && <p>Pagamentos de empréstimos fora do resultado: {brl(l.audit.ignoredValue)}</p>}
+                </div>
+              )}
+              {l.ok && !l.questor && l.audit && (
                 <p className="text-xs text-ink-2 mt-1">
                   {l.audit.processed} contas lidas · faturamento {brl(l.receitas)}
                   {l.audit.ignored > 0 && ` · ${l.audit.ignored} contas de empréstimos/patrimônio separadas da DRE (${brl(l.audit.ignoredValue)})`}
@@ -107,7 +120,7 @@ const ImportModal = ({ open, onClose, companyId, onSuccess }) => {
         <div className="grid sm:grid-cols-2 gap-3">
           {[
             { id: 'excel', icon: FileSpreadsheet, title: 'DRE anual (Excel)', text: 'Uma planilha com os 12 meses nas colunas (.xlsx). Lança o ano inteiro de uma vez.' },
-            { id: 'csv', icon: ListPlus, title: 'Balancetes mensais (CSV)', text: 'Um arquivo por mês, exportado do sistema contábil. Você informa o mês de cada um.' },
+            { id: 'csv', icon: ListPlus, title: 'Balancetes mensais (CSV)', text: 'Balancete Débito Crédito do Questor, um arquivo por mês. O sistema lê o mês, separa as contas de resultado e monta a DRE.' },
           ].map((o) => (
             <button key={o.id} onClick={() => setFormat(o.id)} className="text-left p-4 rounded-xl border border-line hover:border-brand hover:bg-surface-2 transition-colors">
               <o.icon size={22} className="text-brand" />
@@ -126,10 +139,14 @@ const ImportModal = ({ open, onClose, companyId, onSuccess }) => {
 
       {status === 'idle' && format === 'csv' && (
         <div className="space-y-3">
-          <p className="text-sm text-ink-2">Adicione uma linha por mês e escolha o arquivo do balancete daquele mês.</p>
+          <Alert tone="info" title="Como exportar do Questor">
+            Relatórios → Contábeis → Balancete (Texto) → <strong>Balancete - Débito Crédito</strong>, com a data inicial e final do mesmo mês.
+            Na visualização, clique em exportar e escolha <strong>CSV (Somente os textos para abrir no excel)</strong>. Um arquivo por mês; não precisa apagar nenhuma coluna.
+            O mês é lido do próprio arquivo.
+          </Alert>
           {batch.map((item) => (
             <div key={item.id} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end p-3 rounded-lg border border-line bg-surface-2">
-              <Field label="Mês" className="sm:w-44">
+              <Field label="Mês (opcional no Questor)" className="sm:w-48">
                 <Input type="month" value={item.period} onChange={(e) => setBatch((b) => b.map((x) => (x.id === item.id ? { ...x, period: e.target.value } : x)))} />
               </Field>
               <Field label="Arquivo .csv" className="flex-1 min-w-0">
