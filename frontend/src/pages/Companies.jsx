@@ -1,195 +1,194 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Building2, Plus, Edit3, Trash2, Search, CheckCircle, X, Loader, Layers } from 'lucide-react';
+// Empresas e grupos: cadastro das empresas (CNPJ, regime) e agrupamentos.
+import React, { useEffect, useMemo, useState } from 'react';
+import { Building2, Layers, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import http, { errorMessage } from '../services/http';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Feedback, Field, IconButton, Input, Loading, Modal, Page, PageHeader, Select, Textarea } from '../components/ui';
+import { useConfirm } from '../components/ui/useConfirm';
+import { REGIME_LABEL } from '../utils/format';
 
-const Companies = ({ apiBase, onSelectCompany }) => {
-    const [companies, setCompanies] = useState([]);
-    const [groups, setGroups] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    
-    const [isCompModalOpen, setIsCompModalOpen] = useState(false);
-    const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-    const [searchingCnpj, setSearchingCnpj] = useState(false);
-    
-    const [formData, setFormData] = useState({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' });
-    const [groupForm, setGroupForm] = useState({ name: '', description: '' });
+const EMPTY = { id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' };
 
-    const fetchAll = async () => {
-        setLoading(true);
-        try {
-            const [resComp, resGroups] = await Promise.all([
-                axios.get(`${apiBase}/api/companies`),
-                axios.get(`${apiBase}/api/groups`)
-            ]);
-            setCompanies(resComp.data);
-            setGroups(resGroups.data);
-        } catch (error) { console.error(error); } finally { setLoading(false); }
-    };
+const Companies = ({ onSelectCompany, onChanged }) => {
+  const [confirm, confirmDialog] = useConfirm();
+  const [companies, setCompanies] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [version, setVersion] = useState(0);
+  const [search, setSearch] = useState('');
+  const [form, setForm] = useState(null);
+  const [groupForm, setGroupForm] = useState(null);
+  const [lookup, setLookup] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
-    useEffect(() => { fetchAll(); }, [apiBase]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all([http.get('/companies'), http.get('/groups')])
+      .then(([c, g]) => { if (alive) { setCompanies(c.data); setGroups(g.data); } })
+      .catch((e) => alive && setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao carregar as empresas.') }));
+    return () => { alive = false; };
+  }, [version]);
 
-    const handleCnpjLookup = async () => {
-        const cnpj = formData.tax_id.replace(/\D/g, '');
-        if (cnpj.length !== 14) return alert("Digite um CNPJ válido (14 números) para buscar.");
+  const refresh = () => { setVersion((v) => v + 1); onChanged?.(); };
+  const groupName = (id) => groups.find((g) => g.id === Number(id))?.name;
 
-        setSearchingCnpj(true);
-        try {
-            const res = await axios.get(`${apiBase}/api/utils/cnpj/${cnpj}`);
-            if (res.data) {
-                setFormData(prev => ({
-                    ...prev,
-                    name: res.data.name,
-                    trade_name: res.data.tradeName || res.data.name,
-                    tax_regime: res.data.taxRegime || 'SIMPLES'
-                }));
-            }
-        } catch (error) {
-            alert("Erro ao buscar CNPJ. Verifique se está correto ou preencha manualmente.");
-        } finally {
-            setSearchingCnpj(false);
-        }
-    };
+  const filtered = useMemo(() => (companies || []).filter((c) => {
+    const q = search.trim().toLowerCase();
+    return !q || [c.name, c.trade_name, c.tax_id, groupName(c.group_id)].some((v) => (v || '').toLowerCase().includes(q));
+  }), [companies, groups, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handleSaveCompany = async (e) => {
-        e.preventDefault();
-        const user = JSON.parse(localStorage.getItem('hdl_user'));
-        try {
-            const payload = { ...formData, group_id: formData.group_id || null, userId: user?.id, userName: user?.full_name };
-            if (formData.id) await axios.put(`${apiBase}/api/companies/${formData.id}`, payload);
-            else await axios.post(`${apiBase}/api/companies`, payload);
-            setIsCompModalOpen(false); fetchAll();
-        } catch (error) { alert('Erro ao salvar empresa'); }
-    };
+  const lookupCnpj = async () => {
+    const cnpj = form.tax_id.replace(/\D/g, '');
+    if (cnpj.length !== 14) { setFeedback({ tone: 'warning', text: 'Digite os 14 números do CNPJ para buscar.' }); return; }
+    setLookup(true);
+    try {
+      const res = await http.get(`/utils/cnpj/${cnpj}`);
+      setForm((f) => ({ ...f, name: res.data.name, trade_name: res.data.tradeName || res.data.name, tax_regime: res.data.taxRegime || f.tax_regime }));
+    } catch { setFeedback({ tone: 'warning', text: 'Não foi possível consultar este CNPJ. Preencha os dados à mão.' }); }
+    finally { setLookup(false); }
+  };
 
-    const handleSaveGroup = async (e) => {
-        e.preventDefault();
-        try {
-            await axios.post(`${apiBase}/api/groups`, groupForm);
-            setIsGroupModalOpen(false); setGroupForm({ name: '', description: '' }); fetchAll();
-        } catch (error) { alert('Erro ao salvar grupo'); }
-    };
+  const saveCompany = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...form, group_id: form.group_id || null };
+      if (form.id) await http.put(`/companies/${form.id}`, payload);
+      else await http.post('/companies', payload);
+      setForm(null);
+      refresh();
+      setFeedback({ tone: 'success', text: `Empresa “${form.trade_name || form.name}” salva.` });
+    } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao salvar a empresa.') }); }
+  };
 
-    // --- CORREÇÃO AQUI: PASSANDO USUÁRIO NA EXCLUSÃO ---
-    const handleDeleteCompany = async (companyId) => {
-        if (!confirm('Excluir empresa? Todos os dados financeiros vinculados serão apagados.')) return;
-        
-        const user = JSON.parse(localStorage.getItem('hdl_user'));
-        try {
-            await axios.delete(`${apiBase}/api/companies/${companyId}`, {
-                params: {
-                    userId: user?.id,
-                    userName: user?.full_name
-                }
-            });
-            fetchAll();
-        } catch (error) {
-            alert('Erro ao excluir empresa.');
-            console.error(error);
-        }
-    };
+  const deleteCompany = async (c) => {
+    const ok = await confirm({
+      title: `Excluir “${c.trade_name || c.name}”?`,
+      description: 'Todos os dados ligados a esta empresa serão apagados: lançamentos, DRE, planilha de preços, parceiros e metas. Não pode ser desfeito.',
+      confirmLabel: 'Excluir empresa', danger: true,
+    });
+    if (!ok) return;
+    try { await http.delete(`/companies/${c.id}`); refresh(); } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao excluir a empresa.') }); }
+  };
 
-    return (
-        <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
-            <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-200 pb-8">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tighter italic flex items-center gap-3"><Building2 className="text-blue-600" size={32}/> Unidades & Grupos</h1>
-                    <p className="text-slate-400 font-medium mt-1">Gerencie a estrutura organizacional da sua holding.</p>
-                </div>
-                <div className="flex gap-4">
-                    <button onClick={() => setIsGroupModalOpen(true)} className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-black text-[9px] uppercase tracking-widest flex items-center gap-3 hover:bg-slate-50 shadow-sm transition-all"><Layers size={18}/> Novo Grupo</button>
-                    <button onClick={() => { setFormData({ id: null, name: '', trade_name: '', tax_id: '', tax_regime: 'SIMPLES', group_id: '' }); setIsCompModalOpen(true); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 hover:-translate-y-1 transition-all"><Plus size={18}/> Nova Unidade</button>
-                </div>
+  const saveGroup = async (e) => {
+    e.preventDefault();
+    try { await http.post('/groups', groupForm); setGroupForm(null); refresh(); } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao criar o grupo.') }); }
+  };
+
+  const deleteGroup = async (g) => {
+    const ok = await confirm({ title: `Excluir o grupo “${g.name}”?`, description: 'As empresas do grupo continuam cadastradas, só ficam sem grupo.', confirmLabel: 'Excluir grupo', danger: true });
+    if (!ok) return;
+    try { await http.delete(`/groups/${g.id}`); refresh(); } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao excluir o grupo.') }); }
+  };
+
+  return (
+    <Page>
+      {confirmDialog}
+      <PageHeader
+        title="Empresas e grupos"
+        description="Cada empresa tem seus lançamentos, DRE e planilha de preços. O regime tributário define qual custo a ficha técnica usa (Lucro Real, Presumido ou Simples). Grupos somam empresas na Visão geral."
+        actions={<><Button icon={Layers} onClick={() => setGroupForm({ name: '', description: '' })}>Novo grupo</Button><Button variant="primary" icon={Plus} onClick={() => setForm({ ...EMPTY })}>Nova empresa</Button></>}
+      />
+      <Feedback value={feedback} onClose={() => setFeedback(null)} />
+
+      {companies === null ? <Loading /> : (
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <Card padded={false}>
+            <div className="p-4 border-b border-line">
+              <Input prefix={<Search size={15} />} placeholder="Buscar por nome, CNPJ ou grupo…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-                <div className="lg:col-span-1 space-y-6">
-                    <h3 className="font-black text-slate-400 text-[9px] uppercase tracking-widest ml-2">Grupos Corporativos</h3>
-                    <div className="space-y-4">
-                        {groups.map(g => (
-                            <div key={g.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-md transition-all">
-                                <div>
-                                    <p className="text-lg font-black text-slate-800 tracking-tighter italic">{g.name}</p>
-                                    <p className="text-[9px] text-slate-400 font-bold uppercase">{companies.filter(c => c.group_id === g.id).length} Unidades vinculadas</p>
-                                </div>
-                                <button onClick={async () => { if(confirm('Excluir grupo? As empresas cadastradas nele ficarão sem grupo.')) { await axios.delete(`${apiBase}/api/groups/${g.id}`); fetchAll(); } }} className="text-slate-300 hover:text-rose-500 transition-colors p-2 rounded-lg hover:bg-rose-50"><Trash2 size={16}/></button>
-                            </div>
-                        ))}
-                        {groups.length === 0 && <p className="text-slate-300 font-black text-[9px] uppercase text-center py-10 border-2 border-dashed border-slate-100 rounded-[2rem]">Nenhum grupo criado</p>}
+            {filtered.length === 0 ? (
+              <EmptyState icon={Building2} title={companies.length ? 'Nenhuma empresa encontrada' : 'Nenhuma empresa cadastrada'} description={companies.length ? 'Tente outra busca.' : 'Cadastre a primeira empresa para começar.'} />
+            ) : (
+              <ul className="divide-y divide-line">
+                {filtered.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center gap-4 px-4 py-3 hover:bg-surface-2">
+                    <div className="w-9 h-9 rounded-lg bg-brand-soft text-brand flex items-center justify-center shrink-0"><Building2 size={17} /></div>
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="font-medium text-ink">{c.trade_name || c.name}</p>
+                      <p className="text-xs text-ink-3">{c.name !== c.trade_name && c.trade_name ? `${c.name} · ` : ''}CNPJ {c.tax_id || '—'}</p>
                     </div>
-                </div>
-
-                <div className="lg:col-span-3 space-y-6">
-                    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all"><Search className="text-slate-400"/><input type="text" placeholder="Buscar unidade por nome, CNPJ ou grupo..." className="w-full bg-transparent outline-none font-medium text-slate-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {companies.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.group_name?.toLowerCase().includes(searchTerm.toLowerCase())).map(company => (
-                            <div key={company.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group duration-500">
-                                <div className="flex justify-between items-start mb-6">
-                                    <div className="p-4 bg-slate-900 text-white rounded-2xl transform group-hover:rotate-6 transition-transform duration-500 shadow-lg"><Building2 size={24}/></div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => { setFormData(company); setIsCompModalOpen(true); }} className="p-2 text-slate-300 hover:text-blue-600 transition-colors hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
-                                        
-                                        {/* AQUI ESTÁ A CHAMADA CORRIGIDA */}
-                                        <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
-                                    </div>
-                                </div>
-                                <h3 className="text-sm font-black text-slate-900 tracking-tighter italic mb-1">{company.trade_name || company.name}</h3>
-                                <div className="flex items-center gap-2 mb-6">
-                                    <Layers size={12} className="text-blue-500"/>
-                                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{company.group_name || 'Individual (Sem Grupo)'}</p>
-                                </div>
-                                <div className="space-y-3 border-t border-slate-50 pt-4 mb-6">
-                                    <div className="flex justify-between text-[11px] font-bold uppercase"><span className="text-slate-400 tracking-widest">Documento</span><span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded-md">{company.tax_id}</span></div>
-                                    <div className="flex justify-between text-[11px] font-bold uppercase"><span className="text-slate-400 tracking-widest">Regime Fiscal</span><span className="text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md">{company.tax_regime}</span></div>
-                                </div>
-                                <button onClick={() => onSelectCompany(company.id, company.name)} className="w-full py-4 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-2xl font-black text-[9px] uppercase tracking-[0.2em] transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg"><CheckCircle size={16} className="opacity-50"/> Acessar Painel</button>
-                            </div>
-                        ))}
-                        {companies.length === 0 && <div className="col-span-2 text-center py-20 text-slate-300 font-black uppercase tracking-widest italic">Nenhuma empresa cadastrada</div>}
+                    <Badge tone="brand">{REGIME_LABEL[c.tax_regime] || c.tax_regime || 'Sem regime'}</Badge>
+                    {groupName(c.group_id) && <Badge><Layers size={12} /> {groupName(c.group_id)}</Badge>}
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" onClick={() => onSelectCompany(c)}>Abrir</Button>
+                      <IconButton icon={Pencil} label={`Editar ${c.name}`} onClick={() => setForm({ ...EMPTY, ...c, group_id: c.group_id || '' })} />
+                      <IconButton icon={Trash2} variant="danger" label={`Excluir ${c.name}`} onClick={() => deleteCompany(c)} />
                     </div>
-                </div>
-            </div>
-
-            {isCompModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <form onSubmit={handleSaveCompany} className="bg-white w-full max-w-lg rounded-2xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
-                        <div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter">Configurar Unidade</h3><button type="button" onClick={() => setIsCompModalOpen(false)} className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition-all"><X/></button></div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">CNPJ Oficial</label>
-                                <div className="flex gap-2">
-                                    <input type="text" required value={formData.tax_id} onChange={e => setFormData({...formData, tax_id: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-mono font-bold text-slate-700 transition-all"/>
-                                    <button type="button" onClick={handleCnpjLookup} disabled={searchingCnpj} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl shadow transition disabled:opacity-50">
-                                        {searchingCnpj ? <Loader className="animate-spin" size={20}/> : <Search size={20}/>}
-                                    </button>
-                                </div>
-                            </div>
-                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Razão Social</label><input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
-                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome Fantasia (BI)</label><input type="text" value={formData.trade_name} onChange={e => setFormData({...formData, trade_name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all"/></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Regime Tributário</label><select value={formData.tax_regime} onChange={e => setFormData({...formData, tax_regime: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="SIMPLES">SIMPLES NACIONAL</option><option value="LUCRO_PRESUMIDO">LUCRO PRESUMIDO</option><option value="LUCRO_REAL">LUCRO REAL</option></select></div>
-                                <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Grupo Associado</label><select value={formData.group_id} onChange={e => setFormData({...formData, group_id: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none font-bold text-slate-700 cursor-pointer"><option value="">NENHUM (INDIVIDUAL)</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
-                            </div>
-                        </div>
-                        <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 mt-4 transition-all hover:bg-blue-700 hover:shadow-2xl active:scale-95">Salvar Dados da Unidade</button>
-                    </form>
-                </div>
+                  </li>
+                ))}
+              </ul>
             )}
+          </Card>
 
-            {isGroupModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <form onSubmit={handleSaveGroup} className="bg-white w-full max-w-md rounded-2xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100">
-                        <div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter">Novo Grupo Corporativo</h3><button type="button" onClick={() => setIsGroupModalOpen(false)} className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition-all"><X/></button></div>
-                        <div className="space-y-4">
-                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Nome da Holding / Grupo</label><input type="text" required value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-700 transition-all" placeholder="Ex: Grupo XP Soluções"/></div>
-                            <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 block mb-1">Descrição Estratégica</label><textarea value={groupForm.description} onChange={e => setGroupForm({...groupForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 outline-none h-24 resize-none font-medium text-slate-700 transition-all" placeholder="Notas sobre o grupo..."/></div>
-                        </div>
-                        <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl mt-4 hover:bg-black transition-all active:scale-95">Criar Grupo Consolidado</button>
-                    </form>
-                </div>
+          <Card>
+            <CardHeader title="Grupos" description="Para ver várias empresas somadas." />
+            {groups.length === 0 ? <p className="text-sm text-ink-3">Nenhum grupo criado.</p> : (
+              <ul className="space-y-2">
+                {groups.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between gap-2 p-3 rounded-lg border border-line">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{g.name}</p>
+                      <p className="text-xs text-ink-3">{(companies || []).filter((c) => Number(c.group_id) === g.id).length} empresa(s)</p>
+                    </div>
+                    <IconButton size="sm" icon={Trash2} variant="danger" label={`Excluir grupo ${g.name}`} onClick={() => deleteGroup(g)} />
+                  </li>
+                ))}
+              </ul>
             )}
+          </Card>
         </div>
-    );
+      )}
+
+      <Modal
+        open={Boolean(form)}
+        onClose={() => setForm(null)}
+        title={form?.id ? 'Editar empresa' : 'Nova empresa'}
+        footer={<><Button onClick={() => setForm(null)}>Cancelar</Button><Button variant="primary" type="submit" form="form-empresa">Salvar</Button></>}
+      >
+        {form && (
+          <form id="form-empresa" onSubmit={saveCompany} className="space-y-4">
+            <Field label="CNPJ" hint="Digite e clique em Buscar para preencher a razão social e o regime pela Receita.">
+              <div className="flex gap-2">
+                <Input required value={form.tax_id} onChange={(e) => setForm({ ...form, tax_id: e.target.value })} placeholder="00.000.000/0000-00" />
+                <Button icon={Search} loading={lookup} onClick={lookupCnpj}>Buscar</Button>
+              </div>
+            </Field>
+            <Field label="Razão social"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label="Nome fantasia" hint="Nome curto que aparece no seletor de empresa."><Input value={form.trade_name || ''} onChange={(e) => setForm({ ...form, trade_name: e.target.value })} /></Field>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Regime tributário">
+                <Select value={form.tax_regime || 'SIMPLES'} onChange={(e) => setForm({ ...form, tax_regime: e.target.value })}>
+                  {Object.entries(REGIME_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              </Field>
+              <Field label="Grupo">
+                <Select value={form.group_id} onChange={(e) => setForm({ ...form, group_id: e.target.value })}>
+                  <option value="">Nenhum</option>
+                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </Select>
+              </Field>
+            </div>
+            {form.id && <Alert tone="info">Mudar o regime muda o custo usado na planilha de preços desta empresa.</Alert>}
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(groupForm)}
+        onClose={() => setGroupForm(null)}
+        title="Novo grupo"
+        size="sm"
+        footer={<><Button onClick={() => setGroupForm(null)}>Cancelar</Button><Button variant="primary" type="submit" form="form-grupo">Criar grupo</Button></>}
+      >
+        {groupForm && (
+          <form id="form-grupo" onSubmit={saveGroup} className="space-y-4">
+            <Field label="Nome do grupo"><Input required autoFocus value={groupForm.name} onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ex.: Grupo Vector" /></Field>
+            <Field label="Descrição (opcional)"><Textarea value={groupForm.description} onChange={(e) => setGroupForm({ ...groupForm, description: e.target.value })} /></Field>
+            <p className="text-xs text-ink-3">Depois, edite cada empresa e escolha este grupo.</p>
+          </form>
+        )}
+      </Modal>
+    </Page>
+  );
 };
 
 export default Companies;

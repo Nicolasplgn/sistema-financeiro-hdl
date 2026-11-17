@@ -1,149 +1,85 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { 
-  Share2, FileCode, CheckCircle, Clock, 
-  AlertCircle, Download, Database, CloudLightning,
-  RefreshCw, ChevronRight, FileText, Server
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+// Integração Questor: arquivo TXT de lançamentos contábeis de cada mês.
+import React, { useEffect, useState } from 'react';
+import { saveAs } from 'file-saver';
+import { Download, FileText } from 'lucide-react';
+import http, { errorMessage } from '../services/http';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Loading, Page, PageHeader } from '../components/ui';
+import { monthLabel } from '../utils/format';
 
-const QuestorManager = ({ apiBase, companyId }) => {
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+const QuestorManager = ({ companyId, onNavigate }) => {
+  const [history, setHistory] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [error, setError] = useState(null);
 
-  const fetchHistory = async () => {
-    if (!companyId) return;
-    setLoading(true);
+  useEffect(() => {
+    let alive = true;
+    http.get('/entries/history', { params: { companyId } })
+      .then((r) => alive && setHistory({ companyId, list: r.data }))
+      .catch((e) => alive && setError(errorMessage(e, 'Erro ao carregar os meses.')));
+    return () => { alive = false; };
+  }, [companyId]);
+
+  const open = async (entry) => {
+    setSelected(entry.id);
+    setPreview(null);
     try {
-      // Usaremos a rota de history já existente para popular a lista
-      const res = await axios.get(`${apiBase}/api/entries/history?companyId=${companyId}`);
-      setHistory(res.data);
-    } catch (error) {
-      console.error("Erro ao carregar histórico Questor:", error);
-    } finally {
-      setLoading(false);
-    }
+      const r = await http.get(`/integration/questor-preview/${entry.id}`);
+      setPreview(r.data);
+    } catch (e) { setSelected(null); setError(errorMessage(e, 'Erro ao gerar o arquivo.')); }
   };
-
-  useEffect(() => { fetchHistory(); }, [companyId]);
-
-  const handlePreview = async (entryId) => {
-    try {
-      const res = await axios.post(`${apiBase}/api/integration/test-questor`, { entryId });
-      setPreview(res.data.preview_txt);
-      setSelectedEntry(entryId);
-    } catch (error) {
-      alert("Erro ao gerar preview do layout.");
-    }
-  };
-
-  const handleSync = () => {
-    alert("Integração Questor: Aguardando Endpoints da Contabilidade. O Layout está pronto para envio.");
-  };
-
-  if (!companyId) return (
-    <div className="h-96 flex flex-col items-center justify-center text-slate-400">
-      <Server size={48} className="mb-4 opacity-10 animate-pulse"/>
-      <p className="font-black uppercase tracking-widest text-xs">Selecione uma empresa para gerenciar integração</p>
-    </div>
-  );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700 pb-20">
-      
-      {/* HEADER PREMIUM */}
-      <div className="flex flex-col md:flex-row justify-between items-end border-b border-slate-200 pb-8 gap-6">
-        <div>
-          <div className="flex items-center gap-2 text-blue-600 font-black text-[9px] tracking-[0.2em] uppercase mb-2">
-            <CloudLightning size={14} /> Bridge Connector
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tighter italic">
-            Questor <span className="text-slate-300 font-light">Integration</span>
-          </h1>
-          <p className="text-slate-400 font-medium text-sm">Sincronização de lotes contábeis via Layout WebService.</p>
-        </div>
-        <div className="flex gap-4">
-            <div className="bg-amber-50 border border-amber-100 px-6 py-3 rounded-2xl flex items-center gap-3">
-                <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
-                <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest">Aguardando Endpoints</span>
-            </div>
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title="Integração Questor"
+        description="Gera, para cada mês, o arquivo de lançamentos contábeis no layout de importação do Questor, a partir do detalhamento analítico do mês."
+      >
+        <Alert tone="warning" className="mt-3">O envio automático ainda depende do acesso ao webservice da contabilidade. Por enquanto, baixe o arquivo e envie ao escritório.</Alert>
+      </PageHeader>
+      {error && <Alert tone="error" onClose={() => setError(null)}>{error}</Alert>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* LISTA DE LOTES DISPONÍVEIS */}
-        <div className="lg:col-span-1 space-y-6">
-          <h3 className="font-black text-slate-400 text-[9px] uppercase tracking-[0.2em] ml-2">Lotes Mensais Disponíveis</h3>
-          <div className="space-y-3">
-            {history.map((item) => (
-              <button 
-                key={item.id}
-                onClick={() => handlePreview(item.id)}
-                className={`w-full p-6 rounded-[2rem] border transition-all flex items-center justify-between group
-                  ${selectedEntry === item.id ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-white border-slate-100 hover:border-blue-200 shadow-sm'}
-                `}
-              >
-                <div className="text-left">
-                  <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${selectedEntry === item.id ? 'text-blue-400' : 'text-slate-400'}`}>Competência</p>
-                  <p className={`text-sm font-black italic tracking-tighter ${selectedEntry === item.id ? 'text-white' : 'text-slate-900'}`}>{item.period_start.substring(0, 7)}</p>
-                </div>
-                <ChevronRight className={selectedEntry === item.id ? 'text-white' : 'text-slate-300 group-hover:text-blue-500 transition-colors'} />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* PREVIEW E AÇÕES */}
-        <div className="lg:col-span-2 space-y-8">
-          {preview ? (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <div className="bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl border border-white/5">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-white/5 rounded-2xl text-blue-400"><FileCode size={20}/></div>
-                    <span className="text-white font-black text-xs uppercase tracking-widest italic">Preview do Layout (TXT)</span>
-                  </div>
-                  <button onClick={handleSync} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2">
-                    <Share2 size={14}/> Sincronizar com Questor
+      {!history || history.companyId !== companyId ? <Loading /> : history.list.length === 0 ? (
+        <Card><EmptyState title="Nenhum mês lançado" description="Lance um mês primeiro." action={<Button onClick={() => onNavigate('lancamentos')}>Ir para Lançamentos do mês</Button>} /></Card>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <Card padded={false}>
+            <p className="px-4 pt-4 pb-2 text-xs font-medium text-ink-3">Meses lançados</p>
+            <ul className="pb-2">
+              {history.list.map((h) => (
+                <li key={h.id}>
+                  <button onClick={() => open(h)} className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-2 ${selected === h.id ? 'bg-brand-soft text-brand font-medium' : ''}`}>
+                    {monthLabel(h.period_start.slice(0, 7))}
                   </button>
-                </div>
-                <div className="bg-black/40 rounded-3xl p-6 font-mono text-[11px] text-emerald-400/80 overflow-x-auto border border-white/5 leading-relaxed">
-                  <pre>{preview}</pre>
-                </div>
-              </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 flex items-center gap-5 shadow-sm">
-                   <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><CheckCircle size={24}/></div>
-                   <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Layout Validado</p>
-                      <p className="text-sm font-bold text-slate-700">Estrutura pronta para importação.</p>
-                   </div>
-                </div>
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 flex items-center gap-5 shadow-sm">
-                   <div className="p-4 bg-slate-50 text-slate-400 rounded-2xl"><Download size={24}/></div>
-                   <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Backup Local</p>
-                      <p className="text-sm font-bold text-slate-700 underline cursor-pointer hover:text-blue-600">Baixar arquivo .txt</p>
-                   </div>
-                </div>
-              </div>
-            </motion.div>
-          ) : (
-            <div className="bg-white border-2 border-dashed border-slate-100 rounded-2xl h-full flex flex-col items-center justify-center p-20 text-center">
-               <div className="p-6 bg-slate-50 rounded-full mb-6">
-                  <Database size={48} className="text-slate-200" />
-               </div>
-               <h3 className="text-sm font-black text-slate-300 uppercase tracking-tighter italic">Nenhum Lote Selecionado</h3>
-               <p className="text-slate-400 text-sm max-w-xs mt-2">Selecione uma competência ao lado para visualizar o layout de integração contábil.</p>
-            </div>
-          )}
+          <Card>
+            {!selected ? (
+              <EmptyState icon={FileText} title="Escolha um mês" description="Clique em um mês ao lado para ver o arquivo." />
+            ) : !preview ? <Loading label="Gerando o arquivo…" /> : (
+              <>
+                <CardHeader
+                  title={`Arquivo de ${monthLabel(preview.period)}`}
+                  description={`${preview.lines} lançamento(s) a partir do detalhamento analítico do mês.`}
+                  actions={<Button variant="primary" icon={Download} disabled={!preview.txt} onClick={() => saveAs(new Blob([preview.txt], { type: 'text/plain;charset=utf-8' }), `questor_${preview.period}.txt`)}>Baixar .txt</Button>}
+                />
+                {preview.lines === 0 ? (
+                  <Alert tone="info">Este mês não tem detalhamento analítico. Adicione as linhas em “Lançamentos do mês” para gerar o arquivo.</Alert>
+                ) : (
+                  <>
+                    {preview.withoutAccount > 0 && <Alert tone="warning" className="mb-3"><Badge tone="warn">{preview.withoutAccount}</Badge> linha(s) estão em categorias sem conta contábil do Questor e saem como “CONTA_GENERICA”.</Alert>}
+                    <pre className="text-xs num bg-surface-2 border border-line rounded-lg p-4 overflow-x-auto scroll-thin max-h-[60vh] text-ink-2">{preview.txt}</pre>
+                  </>
+                )}
+              </>
+            )}
+          </Card>
         </div>
-      </div>
-    </div>
+      )}
+    </Page>
   );
 };
 

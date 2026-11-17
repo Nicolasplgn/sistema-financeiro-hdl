@@ -1,230 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { 
-  ShieldAlert, Users, Search, UserPlus, LogIn, Trash2, 
-  Activity, Database, LayoutDashboard, Lock, Edit3, X, Save, Infinity
-} from 'lucide-react';
+// Clientes do sistema (somente SUPER_ADMIN): usuários, licenças e acesso às contas.
+import React, { useEffect, useMemo, useState } from 'react';
+import { LogIn, Pencil, Search, Trash2, UserPlus } from 'lucide-react';
+import http, { errorMessage } from '../services/http';
+import { Badge, Button, Card, EmptyState, Feedback, Field, IconButton, Input, Loading, Modal, Page, PageHeader, Select, Stat } from '../components/ui';
+import { useConfirm } from '../components/ui/useConfirm';
 
-const AdminPanel = ({ apiBase, onImpersonate }) => {
-  const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
-  
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Modais
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
-  // Forms
-  const [newUser, setNewUser] = useState({ full_name: '', email: '', password: '', role: 'ADMIN', max_companies: 1 });
-  const [editUser, setEditUser] = useState(null);
+const ROLE_LABEL = { SUPER_ADMIN: 'Administrador Vector', ADMIN: 'Cliente', MANAGER: 'Gestor', CLIENT: 'Consulta' };
+const EMPTY = { full_name: '', email: '', password: '', role: 'ADMIN', max_companies: 1 };
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${BASE_URL}/api/admin/users`);
-      setUsers(res.data);
-    } catch (error) { console.error("Erro ao buscar usuários", error); } 
-    finally { setLoading(false); }
-  };
+const AdminPanel = ({ onImpersonate }) => {
+  const [confirm, confirmDialog] = useConfirm();
+  const [users, setUsers] = useState(null);
+  const [version, setVersion] = useState(0);
+  const [search, setSearch] = useState('');
+  const [createForm, setCreateForm] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    let alive = true;
+    http.get('/admin/users')
+      .then((r) => alive && setUsers(r.data))
+      .catch((e) => alive && setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao carregar os usuários.') }));
+    return () => { alive = false; };
+  }, [version]);
 
-  const handleCreateUser = async (e) => {
+  const list = useMemo(() => (users || []).filter((u) => {
+    const q = search.trim().toLowerCase();
+    return !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+  }), [users, search]);
+
+  const create = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${BASE_URL}/api/admin/users`, newUser);
-      setIsCreateModalOpen(false);
-      setNewUser({ full_name: '', email: '', password: '', role: 'ADMIN', max_companies: 1 });
-      fetchUsers();
-      alert('Cliente criado com sucesso!');
-    } catch (error) { alert('Erro ao criar usuário.'); }
+      await http.post('/admin/users', createForm);
+      setCreateForm(null);
+      setVersion((v) => v + 1);
+      setFeedback({ tone: 'success', text: `Usuário ${createForm.email} criado.` });
+    } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao criar o usuário.') }); }
   };
 
-  const handleUpdateUser = async (e) => {
+  const update = async (e) => {
     e.preventDefault();
     try {
-        await axios.put(`${BASE_URL}/api/admin/users/${editUser.id}`, {
-            role: editUser.role,
-            max_companies: editUser.max_companies,
-            password: editUser.password 
-        });
-        setIsEditModalOpen(false);
-        fetchUsers();
-        alert('Dados atualizados!');
-    } catch (error) { alert('Erro ao atualizar.'); }
+      await http.put(`/admin/users/${editForm.id}`, { role: editForm.role, max_companies: Number(editForm.max_companies), password: editForm.password || undefined });
+      setEditForm(null);
+      setVersion((v) => v + 1);
+      setFeedback({ tone: 'success', text: 'Dados atualizados.' });
+    } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao atualizar.') }); }
   };
 
-  const handleDeleteUser = async (id) => {
-    if (!confirm('ATENÇÃO: Excluir um usuário removerá acesso às empresas dele. Continuar?')) return;
-    try { await axios.delete(`${BASE_URL}/api/admin/users/${id}`); fetchUsers(); } 
-    catch (error) { alert('Erro ao excluir.'); }
+  const remove = async (u) => {
+    if (!(await confirm({ title: `Excluir ${u.full_name}?`, description: 'A pessoa perde o acesso ao sistema. As empresas dela continuam cadastradas.', confirmLabel: 'Excluir usuário', danger: true }))) return;
+    try { await http.delete(`/admin/users/${u.id}`); setVersion((v) => v + 1); } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao excluir.') }); }
   };
 
-  const handleImpersonate = async (user) => {
-    if (!confirm(`Deseja entrar no sistema como "${user.full_name}"?`)) return;
+  const impersonate = async (u) => {
+    if (!(await confirm({ title: `Entrar como ${u.full_name}?`, description: 'Você verá o sistema exatamente como este cliente vê. Para voltar, saia e entre de novo com o seu usuário.', confirmLabel: 'Entrar na conta' }))) return;
     try {
-        const res = await axios.post(`${BASE_URL}/api/admin/impersonate`, { targetUserId: user.id });
-        if (res.data.user) onImpersonate(res.data.user, res.data.token);
-    } catch (error) { alert('Erro ao acessar conta.'); }
+      const r = await http.post('/admin/impersonate', { targetUserId: u.id });
+      if (r.data.user) onImpersonate(r.data.user, r.data.token);
+    } catch (err) { setFeedback({ tone: 'error', text: errorMessage(err, 'Erro ao acessar a conta.') }); }
   };
-
-  const filteredUsers = users.filter(u => 
-    u.full_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-700 pb-32">
-      
-      {/* HEADER */}
-      <div className="flex justify-between items-end mb-10">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
-            <ShieldAlert className="text-rose-600" size={40}/> Vector Control Center
-          </h1>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2 ml-1">Gestão de Licenças e Clientes</p>
-        </div>
-        <div className="flex gap-4">
-           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Users size={20}/></div>
-              <div><p className="text-[9px] font-black uppercase text-slate-400">Total Clientes</p><p className="text-sm font-black text-slate-800">{users.length}</p></div>
-           </div>
-           <button onClick={() => setIsCreateModalOpen(true)} className="bg-slate-900 hover:bg-black text-white px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 transition hover:-translate-y-1">
-             <UserPlus size={18}/> Novo Cliente
-           </button>
-        </div>
-      </div>
+    <Page>
+      {confirmDialog}
+      <PageHeader
+        title="Clientes do sistema"
+        description="Cada cliente é um usuário que cadastra as próprias empresas, até o limite de licenças."
+        actions={<Button variant="primary" icon={UserPlus} onClick={() => setCreateForm({ ...EMPTY })}>Novo cliente</Button>}
+      />
+      <Feedback value={feedback} onClose={() => setFeedback(null)} />
 
-      {/* SEARCH */}
-      <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-200 mb-8 flex items-center gap-4 focus-within:ring-4 focus-within:ring-slate-100 transition-all">
-         <Search className="text-slate-400 ml-2" size={24}/>
-         <input type="text" placeholder="Buscar cliente por nome ou e-mail..." className="w-full h-full outline-none text-lg font-medium text-slate-700 placeholder-slate-300" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-      </div>
+      {users && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Stat label="Usuários" value={users.length} />
+          <Stat label="Clientes" value={users.filter((u) => u.role !== 'SUPER_ADMIN').length} />
+          <Stat label="Empresas cadastradas" value={users.reduce((a, u) => a + Number(u.companies_used || 0), 0)} />
+          <Stat label="No limite de licenças" value={users.filter((u) => u.role !== 'SUPER_ADMIN' && Number(u.companies_used) >= Number(u.max_companies)).length} tone="warn" />
+        </div>
+      )}
 
-      {/* TABLE */}
-      <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
-        <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-200 text-xs font-black uppercase text-slate-400 tracking-widest">
-                <tr><th className="p-6">Cliente / Usuário</th><th className="p-6">Plano / Role</th><th className="p-6 text-center">Uso de Licenças</th><th className="p-6">Data Cadastro</th><th className="p-6 text-right">Ações</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-                {filteredUsers.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-50/80 transition-colors group">
-                        <td className="p-6">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-white ${u.role === 'SUPER_ADMIN' ? 'bg-rose-500 shadow-rose-200' : 'bg-blue-600 shadow-blue-200'} shadow-lg`}>{u.full_name.charAt(0)}</div>
-                                <div><p className="font-bold text-slate-800">{u.full_name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
-                            </div>
-                        </td>
-                        <td className="p-6"><span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide ${u.role === 'SUPER_ADMIN' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span></td>
-                        <td className="p-6 text-center">
-                            {u.role === 'SUPER_ADMIN' ? (
-                                <div className="flex items-center justify-center gap-2 text-emerald-600 font-black text-xs uppercase tracking-widest">
-                                    <Infinity size={18}/> Ilimitado
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="flex items-center justify-center gap-2">
-                                        <span className={`font-mono font-bold ${u.companies_used >= u.max_companies ? 'text-rose-600' : 'text-emerald-600'}`}>{u.companies_used}</span>
-                                        <span className="text-slate-300">/</span>
-                                        <span className="font-mono font-bold text-slate-900">{u.max_companies}</span>
-                                    </div>
-                                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden max-w-[100px] mx-auto">
-                                        <div className={`h-full ${u.companies_used >= u.max_companies ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${Math.min((u.companies_used/u.max_companies)*100, 100)}%`}}></div>
-                                    </div>
-                                </>
-                            )}
-                        </td>
-                        <td className="p-6 text-xs font-medium text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
-                        <td className="p-6 text-right">
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => { setEditUser(u); setIsEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 transition bg-slate-50 rounded-lg hover:bg-blue-50" title="Editar Licenças"><Edit3 size={16}/></button>
-                                {u.role !== 'SUPER_ADMIN' && (
-                                    <button onClick={() => handleImpersonate(u)} className="flex items-center gap-2 px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 transition hover:-translate-y-1"><LogIn size={14}/> Entrar</button>
-                                )}
-                                <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-300 hover:text-rose-500 transition rounded-lg hover:bg-rose-50"><Trash2 size={18}/></button>
-                            </div>
-                        </td>
+      <Card padded={false}>
+        <div className="p-4 border-b border-line"><Input prefix={<Search size={15} />} placeholder="Buscar por nome ou e-mail…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        {users === null ? <Loading /> : list.length === 0 ? <EmptyState title="Ninguém encontrado" /> : (
+          <div className="overflow-x-auto scroll-thin">
+            <table className="w-full text-sm min-w-[760px]">
+              <thead className="bg-surface-2 text-xs text-ink-2">
+                <tr><th className="text-left font-medium px-4 py-2.5">Usuário</th><th className="text-left font-medium px-4 py-2.5">Perfil</th><th className="text-left font-medium px-4 py-2.5">Licenças</th><th className="text-left font-medium px-4 py-2.5">Desde</th><th className="w-48" /></tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {list.map((u) => {
+                  const unlimited = u.role === 'SUPER_ADMIN';
+                  const full = !unlimited && Number(u.companies_used) >= Number(u.max_companies);
+                  return (
+                    <tr key={u.id} className="hover:bg-surface-2">
+                      <td className="px-4 py-2.5"><p className="font-medium">{u.full_name}</p><p className="text-xs text-ink-3">{u.email}</p></td>
+                      <td className="px-4 py-2.5"><Badge tone={unlimited ? 'neg' : 'neutral'}>{ROLE_LABEL[u.role] || u.role}</Badge></td>
+                      <td className="px-4 py-2.5">
+                        {unlimited ? <span className="text-ink-3">ilimitado</span> : (
+                          <div className="w-32">
+                            <p className={`num text-xs ${full ? 'text-neg' : 'text-ink-2'}`}>{u.companies_used} de {u.max_companies} empresas</p>
+                            <div className="mt-1 h-1.5 rounded-full bg-surface-3 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.min((u.companies_used / u.max_companies) * 100, 100)}%`, background: full ? 'var(--neg)' : 'var(--pos)' }} /></div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-ink-2 num">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-1">
+                          {!unlimited && <Button size="sm" icon={LogIn} onClick={() => impersonate(u)}>Entrar</Button>}
+                          <IconButton icon={Pencil} label={`Editar ${u.full_name}`} onClick={() => setEditForm({ ...u, password: '' })} />
+                          <IconButton icon={Trash2} variant="danger" label={`Excluir ${u.full_name}`} onClick={() => remove(u)} />
+                        </div>
+                      </td>
                     </tr>
-                ))}
-            </tbody>
-        </table>
-      </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
-      {/* MODAL CRIAR */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
-                <button onClick={() => setIsCreateModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                <h3 className="text-2xl font-black text-slate-900 mb-6">Novo Cliente</h3>
-                <form onSubmit={handleCreateUser} className="space-y-4">
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome Completo</label><input required className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.full_name} onChange={e => setNewUser({...newUser, full_name: e.target.value})}/></div>
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">E-mail de Acesso</label><input required type="email" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})}/></div>
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Senha Provisória</label><input required type="text" className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})}/></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Perfil</label>
-                            <select className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
-                                <option value="ADMIN">Cliente</option>
-                                <option value="SUPER_ADMIN">Admin Vector</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Licenças (Unidades)</label>
-                            <input type="number" min="1" disabled={newUser.role === 'SUPER_ADMIN'} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none disabled:opacity-50" value={newUser.role === 'SUPER_ADMIN' ? 9999 : newUser.max_companies} onChange={e => setNewUser({...newUser, max_companies: e.target.value})}/>
-                        </div>
-                    </div>
-                    <button type="submit" className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl mt-4 hover:bg-black transition shadow-lg uppercase text-xs tracking-widest">Cadastrar Usuário</button>
-                </form>
+      <Modal open={Boolean(createForm)} onClose={() => setCreateForm(null)} title="Novo cliente" footer={<><Button onClick={() => setCreateForm(null)}>Cancelar</Button><Button variant="primary" type="submit" form="form-usuario">Criar</Button></>}>
+        {createForm && (
+          <form id="form-usuario" onSubmit={create} className="space-y-4">
+            <Field label="Nome completo"><Input required value={createForm.full_name} onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })} /></Field>
+            <Field label="E-mail de acesso"><Input required type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} /></Field>
+            <Field label="Senha provisória" hint="Combine com o cliente de trocar no primeiro acesso."><Input required value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} /></Field>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Perfil">
+                <Select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}>
+                  <option value="ADMIN">Cliente</option>
+                  <option value="SUPER_ADMIN">Administrador Vector</option>
+                </Select>
+              </Field>
+              <Field label="Licenças (empresas)"><Input type="number" min="1" disabled={createForm.role === 'SUPER_ADMIN'} value={createForm.max_companies} onChange={(e) => setCreateForm({ ...createForm, max_companies: e.target.value })} /></Field>
             </div>
-        </div>
-      )}
+          </form>
+        )}
+      </Modal>
 
-      {/* MODAL EDITAR (Onde você libera ou tira licenças) */}
-      {isEditModalOpen && editUser && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
-                <button onClick={() => setIsEditModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                <div className="mb-6 text-center">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 font-black text-2xl uppercase shadow-lg">
-                        {editUser.full_name.charAt(0)}
-                    </div>
-                    <h3 className="text-sm font-black text-slate-900">{editUser.full_name}</h3>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{editUser.role}</p>
-                </div>
-                
-                <form onSubmit={handleUpdateUser} className="space-y-6">
-                    <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 text-center">Limite de Licenças (Unidades)</label>
-                        <div className="flex items-center justify-center gap-4">
-                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: Math.max(1, parseInt(editUser.max_companies) - 1)})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center font-black text-sm transition">-</button>
-                            <input 
-                                type="number" 
-                                min="1" 
-                                className="w-24 h-16 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-3xl text-slate-900 outline-none text-center focus:border-blue-500 transition" 
-                                value={editUser.max_companies} 
-                                onChange={e => setEditUser({...editUser, max_companies: e.target.value})}
-                            />
-                            <button type="button" onClick={() => setEditUser({...editUser, max_companies: parseInt(editUser.max_companies) + 1})} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 flex items-center justify-center font-black text-sm transition">+</button>
-                        </div>
-                    </div>
-                    
-                    <div className="pt-4 border-t border-slate-100">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Alterar Senha (Opcional)</label>
-                        <input type="text" placeholder="Nova senha..." className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition" onChange={e => setEditUser({...editUser, password: e.target.value})}/>
-                    </div>
-
-                    <button type="submit" className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-xl uppercase text-xs tracking-widest flex items-center justify-center gap-2">
-                        <Save size={16}/> Salvar Alterações
-                    </button>
-                </form>
-            </div>
-        </div>
-      )}
-
-    </div>
+      <Modal open={Boolean(editForm)} onClose={() => setEditForm(null)} title={editForm ? `Editar ${editForm.full_name}` : ''} size="sm" footer={<><Button onClick={() => setEditForm(null)}>Cancelar</Button><Button variant="primary" type="submit" form="form-editar-usuario">Salvar</Button></>}>
+        {editForm && (
+          <form id="form-editar-usuario" onSubmit={update} className="space-y-4">
+            <Field label="Perfil">
+              <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
+                {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </Field>
+            <Field label="Licenças (empresas)" hint={`Usando ${editForm.companies_used}.`}><Input type="number" min="1" value={editForm.max_companies} onChange={(e) => setEditForm({ ...editForm, max_companies: e.target.value })} /></Field>
+            <Field label="Nova senha (opcional)"><Input value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} placeholder="Deixe em branco para manter" /></Field>
+          </form>
+        )}
+      </Modal>
+    </Page>
   );
 };
 

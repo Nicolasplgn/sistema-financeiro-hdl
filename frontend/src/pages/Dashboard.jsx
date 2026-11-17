@@ -1,516 +1,283 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { 
-  Wallet, TrendingUp, TrendingDown, Building2, Printer, 
-  PieChart, Loader, X, FileText, Table as TableIcon, Filter, 
-  BarChart3, Layers, FileSpreadsheet, MessageCircle,
-  Users, ShoppingBag, Trophy, Medal, Target, Receipt, FileCode,
-  CalendarRange, Info
-} from 'lucide-react';
-import { Doughnut, Bar } from 'react-chartjs-2';
-import { motion, AnimatePresence } from 'framer-motion';
+// Visão geral: faturamento, saídas e lucro do período, da empresa ou do grupo.
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Bar } from 'react-chartjs-2';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
+import { CalendarRange, FileDown, FileSpreadsheet, Info, MessageCircle, TrendingDown, TrendingUp, Wallet, Percent, Landmark } from 'lucide-react';
+import http, { errorMessage } from '../services/http';
+import { Alert, Button, Card, CardHeader, EmptyState, Input, Loading, Page, PageHeader, Stat } from '../components/ui';
+import { SheetFrame } from '../components/ui/sheet';
+import { baseChartOptions, SERIES } from '../utils/charts';
+import { brl, money, monthLabel, pct } from '../utils/format';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler);
+const currentYear = () => new Date().getFullYear();
+const lastDay = (month) => { const [y, m] = month.split('-').map(Number); return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
 
-// --- COMPONENTE DE RANKING VISUAL ---
-const RankingItem = ({ rank, name, value, maxValue, type }) => {
-  const percent = maxValue > 0 ? (value / maxValue) * 100 : 0;
-  const isClient = type === 'client';
-  const colorBar = isClient ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-rose-500 to-orange-400';
-  const colorText = isClient ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400';
-  
-  let RankIcon = null;
-  let rankColor = 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400';
-  
-  if (rank === 1) { RankIcon = <Trophy size={16} />; rankColor = 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 ring-2 ring-yellow-200 dark:ring-yellow-700'; }
-  else if (rank === 2) { RankIcon = <Medal size={16} />; rankColor = 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 ring-2 ring-gray-200 dark:ring-slate-700'; }
-  else if (rank === 3) { RankIcon = <Medal size={16} />; rankColor = 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 ring-2 ring-orange-100 dark:ring-orange-800'; }
-
+const RankingList = ({ title, items, tone }) => {
+  const max = items.length ? Number(items[0].value) || 1 : 1;
   return (
-    <div className="flex items-center gap-4 py-3 border-b border-gray-50 dark:border-slate-800/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors rounded-lg px-2">
-      <div className={`w-10 h-10 rounded-full ${rankColor} flex items-center justify-center text-xs font-black shrink-0 shadow-sm`}>
-        {RankIcon ? RankIcon : `#${rank}`}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-end mb-1.5">
-          <span className="text-sm font-black text-slate-700 dark:text-slate-200 truncate max-w-[150px] uppercase tracking-tighter" title={name}>{name}</span>
-          <div className="text-right">
-            <span className={`block text-sm font-mono font-black tracking-tighter ${colorText}`}>
-              {Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </span>
-          </div>
-        </div>
-        <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden flex relative">
-          <motion.div 
-            initial={{ width: 0 }} 
-            animate={{ width: `${percent}%` }} 
-            transition={{ duration: 1, ease: "easeOut", delay: rank * 0.1 }} 
-            className={`h-full rounded-full ${colorBar} shadow-sm`}
-          />
-        </div>
-      </div>
-    </div>
+    <Card>
+      <CardHeader title={title} />
+      {items.length === 0 ? <p className="text-sm text-ink-3">Sem lançamentos detalhados com parceiro neste período.</p> : (
+        <ol className="space-y-3">
+          {items.map((it, i) => (
+            <li key={`${it.name}-${i}`}>
+              <div className="flex justify-between gap-3 text-sm">
+                <span className="truncate"><span className="text-ink-3 num mr-2">{i + 1}.</span>{it.name}</span>
+                <span className="font-medium num shrink-0">{brl(Number(it.value))}</span>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${(Number(it.value) / max) * 100}%`, background: tone }} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 };
 
-const PremiumCard = ({ title, value, sub, icon: Icon, color, children }) => (
-  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between h-full hover:shadow-md transition-all">
-    <div className="min-w-0">
-        <div className={`w-fit p-2 rounded-lg bg-opacity-10 dark:bg-opacity-20 ${color.replace('text-', 'bg-')} ${color} mb-2`}><Icon size={16} /></div>
-        <p className="text-slate-400 dark:text-slate-500 text-[9px] font-black uppercase tracking-widest mb-0.5">{title}</p>
-        <h3 className={`text-sm font-black tracking-tighter truncate ${color}`} title={value}>{value}</h3>
-        <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium truncate">{sub}</p>
-    </div>
-    {children && <div className="mt-2">{children}</div>}
-  </motion.div>
-);
-
-const Dashboard = ({ companyId, groupId, apiBase }) => {
-  const [reportData, setReportData] = useState(null);
-  const [rankingData, setRankingData] = useState({ clients: [], suppliers: [] });
-  const [loading, setLoading] = useState(false);
-  
-  // MEMÓRIA DE FILTRO: PERÍODO
+const Dashboard = ({ companyId, groupId, companies }) => {
   const [period, setPeriod] = useState(() => {
-    try {
-      const saved = localStorage.getItem('vector_dash_period');
-      return saved ? JSON.parse(saved) : { start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` };
-    } catch(e) { return { start: `${new Date().getFullYear()}-01`, end: `${new Date().getFullYear()}-12` }; }
+    try { return JSON.parse(localStorage.getItem('vector_dash_period')) || { start: `${currentYear()}-01`, end: `${currentYear()}-12` }; }
+    catch { return { start: `${currentYear()}-01`, end: `${currentYear()}-12` }; }
   });
+  const [report, setReport] = useState(null);
+  const [ranking, setRanking] = useState({ clients: [], suppliers: [] });
+  const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const printRef = useRef(null);
 
-  // Salva o filtro sempre que mudar
+  useEffect(() => { localStorage.setItem('vector_dash_period', JSON.stringify(period)); }, [period]);
+
+  // Grupo: soma as empresas que pertencem a ele.
+  const companyIds = useMemo(() => (groupId
+    ? companies.filter((c) => Number(c.group_id) === Number(groupId)).map((c) => c.id)
+    : companyId ? [companyId] : []), [companyId, groupId, companies]);
+  const key = `${companyIds.join(',')}|${period.start}|${period.end}`;
+  const [loadedKey, setLoadedKey] = useState(null);
+
   useEffect(() => {
-    localStorage.setItem('vector_dash_period', JSON.stringify(period));
-  }, [period]);
+    if (companyIds.length === 0) return undefined;
+    let alive = true;
+    const startDate = `${period.start}-01`;
+    const endDate = lastDay(period.end);
+    Promise.all([
+      http.post('/report', { companyIds, startDate, endDate }),
+      companyId ? http.get('/reports/partners-ranking', { params: { companyId, startDate, endDate } }) : Promise.resolve({ data: { clients: [], suppliers: [] } }),
+    ])
+      .then(([r, rk]) => { if (alive) { setReport(r.data); setRanking(rk.data); setError(null); setLoadedKey(key); } })
+      .catch((e) => alive && setError(errorMessage(e, 'Erro ao carregar o relatório.')));
+    return () => { alive = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const[detailModal, setDetailModal] = useState({ open: false, type: null, data: null, title: '', dataType: 'REVENUE' });
-  const [generatingPdf, setGeneratingPdf] = useState(false);
-  
-  const printRef = useRef();
+  if (groupId && companyIds.length === 0) {
+    return <Page><EmptyState title="Este grupo não tem empresas" description="Vincule empresas ao grupo em “Empresas e grupos” para ver o consolidado." /></Page>;
+  }
+  if (!report || loadedKey !== key) return error ? <Page><Alert tone="error">{error}</Alert></Page> : <Loading label="Montando a visão geral…" />;
 
-  const formatCurrency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const { months, summary, categories } = report;
+  const saidas = summary.totalTaxes + summary.totalCosts;
+  const margin = summary.totalRevenue > 0 ? (summary.totalProfit / summary.totalRevenue) * 100 : 0;
+  const taxTotals = months.reduce((acc, m) => ({
+    ICMS: acc.ICMS + Number(m.tax_icms || 0), PIS: acc.PIS + Number(m.tax_pis || 0), COFINS: acc.COFINS + Number(m.tax_cofins || 0),
+    ISS: acc.ISS + Number(m.tax_iss || 0), 'IRPJ + CSLL': acc['IRPJ + CSLL'] + Number(m.tax_irpj_csll || 0),
+  }), { ICMS: 0, PIS: 0, COFINS: 0, ISS: 0, 'IRPJ + CSLL': 0 });
+  const otherTaxes = summary.totalTaxes - Object.values(taxTotals).reduce((a, b) => a + b, 0);
+  const catTotal = categories.reduce((a, c) => a + Number(c.total), 0);
 
-  // Função auxiliar para cores dinâmicas
-  const getCategoryColor = (type, index) => {
-    if (type === 'REVENUE') {
-        const greens =['#10B981', '#059669', '#34D399', '#3B82F6', '#2563EB'];
-        return greens[index % greens.length];
-    } else {
-        const reds =['#EF4444', '#DC2626', '#F59E0B', '#D97706', '#EC4899'];
-        return reds[index % reds.length];
-    }
+  // ------------------------------------------------------------------ exportações
+  const exportExcel = async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Visão geral');
+    ws.addRow([`Visão geral ${period.start} a ${period.end}`]).font = { bold: true, size: 14 };
+    ws.addRow([]);
+    const header = ws.addRow(['Mês', 'Faturamento', 'Impostos', 'Compras', 'Despesas', 'Lucro líquido', 'Margem %']);
+    header.font = { bold: true };
+    months.forEach((m) => ws.addRow([m.monthKey, m.totalRevenue, m.totalTaxes, m.totalPurchases, m.totalExpenses, m.profit, m.totalRevenue > 0 ? m.profit / m.totalRevenue : 0]));
+    const total = ws.addRow(['Total', summary.totalRevenue, summary.totalTaxes, months.reduce((a, m) => a + m.totalPurchases, 0), months.reduce((a, m) => a + m.totalExpenses, 0), summary.totalProfit, margin / 100]);
+    total.font = { bold: true };
+    ws.columns = [{ width: 12 }, ...Array(5).fill({ width: 18, style: { numFmt: '"R$" #,##0.00' } }), { width: 12, style: { numFmt: '0.0%' } }];
+    saveAs(new Blob([await wb.xlsx.writeBuffer()]), `visao-geral_${period.start}_${period.end}.xlsx`);
   };
 
-  // FUNÇÃO PARA SETAR ANO ATUAL
-  const handleSetCurrentYear = () => {
-    const currentYear = new Date().getFullYear();
-    setPeriod({
-        start: `${currentYear}-01`,
-        end: `${currentYear}-12`
-    });
-  };
-
-  // 1. EXPORTAÇÃO EXCEL
-  const handleExportExcel = async () => {
-    if (!reportData || !reportData.months || !reportData.months.length) return alert("Sem dados para exportar.");
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Relatório BI Vector');
-    
-    // Header Estilizado
-    worksheet.mergeCells('A1:E2');
-    const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'VECTOR CONNECT ENTERPRISES | MASTER BI REPORT';
-    titleCell.font = { name: 'Arial Black', size: 16, color: { argb: 'FFFFFFFF' } };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
-    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-    
-    // Colunas
-    const headerRow = worksheet.getRow(4);
-    headerRow.values =['COMPETÊNCIA', 'FATURAMENTO', 'IMPOSTOS', 'SAÍDAS (CUSTOS)', 'LUCRO LÍQUIDO'];
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }; });
-    
-    // Dados
-    reportData.months.forEach((m) => {
-        const row = worksheet.addRow([
-            m.monthKey, 
-            Number(m.totalRevenue || 0), 
-            Number(m.totalTaxes || 0), 
-            (Number(m.totalPurchases || 0) + Number(m.totalExpenses || 0)), 
-            Number(m.profit || 0)
-        ]);[2, 3, 4, 5].forEach(col => { row.getCell(col).numFmt = '"R$" #,##0.00'; });
-    });
-
-    // Resumo
-    if (reportData.summary) {
-        worksheet.addRow([]);
-        const summaryRow = worksheet.addRow([
-            'TOTAL GERAL',
-            Number(reportData.summary.totalRevenue || 0),
-            Number(reportData.summary.totalTaxes || 0),
-            Number(reportData.summary.totalCosts || 0),
-            Number(reportData.summary.totalProfit || 0)
-        ]);
-        summaryRow.font = { bold: true };
-        [2, 3, 4, 5].forEach(col => { summaryRow.getCell(col).numFmt = '"R$" #,##0.00'; });
-    }
-
-    worksheet.columns =[{ width: 20 }, { width: 25 }, { width: 25 }, { width: 25 }, { width: 25 }];
-    const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Relatorio_BI_Vector_${period.start}.xlsx`);
-  };
-
-  // 2. EXPORTAÇÃO HTML
-  const handleExportHTML = () => {
-    if (!reportData || !reportData.months || !reportData.months.length) return alert("Sem dados.");
-    const s = reportData.summary;
-    const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html lang="pt-br">
-    <head>
-        <meta charset="UTF-8">
-        <title>Vector Connect BI Report</title>
-        <style>
-            body { font-family: sans-serif; padding: 40px; background: #f8fafc; }
-            .card { background: white; padding: 30px; border-radius: 25px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
-            h1 { color: #0f172a; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th { background: #0f172a; color: white; padding: 12px; text-align: left; }
-            td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; }
-            .summary { margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; }
-            .summary p { margin: 8px 0; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h1>Vector Connect | BI Report</h1>
-            <p><strong>Período:</strong> ${period.start} a ${period.end}</p>
-            <div class="summary">
-                <p>Faturamento Total: ${formatCurrency(s.totalRevenue)}</p>
-                <p>Lucro Total: ${formatCurrency(s.totalProfit)} (Margem: ${margin}%)</p>
-                <p>Impostos Total: ${formatCurrency(s.totalTaxes)}</p>
-                <p>Custos Total: ${formatCurrency(s.totalCosts)}</p>
-            </div>
-            <table>
-                <thead><tr><th style="text-align:left">Mês</th><th>Receita</th><th>Impostos</th><th>Saídas</th><th>Resultado</th></tr></thead>
-                <tbody>
-                    ${reportData.months.map(m => `
-                        <tr>
-                            <td style="text-align:left">${m.monthKey}</td>
-                            <td>${formatCurrency(m.totalRevenue || 0)}</td>
-                            <td>${formatCurrency(m.totalTaxes || 0)}</td>
-                            <td>${formatCurrency((Number(m.totalPurchases || 0) + Number(m.totalExpenses || 0)))}</td>
-                            <td>${formatCurrency(m.profit || 0)}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    </body>
-    </html>`;
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url; link.download = `Relatorio_BI_Vector.html`; link.click();
-  };
-
-  // 3. EXPORTAÇÃO WHATSAPP
-  const handleShareWhatsApp = () => {
-    if (!reportData?.summary) return;
-    const s = reportData.summary;
-    const margin = s.totalRevenue > 0 ? ((s.totalProfit / s.totalRevenue) * 100).toFixed(1) : 0;
-    const text = `📊 *Vector Connect Financeiro*\n💰 Fat: ${formatCurrency(s.totalRevenue)}\n📉 Saídas: ${formatCurrency(s.totalCosts + s.totalTaxes)}\n✅ Lucro: ${formatCurrency(s.totalProfit)}\n📈 Margem: ${margin}%`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  // 4. EXPORTAÇÃO PDF
-  const handleDownloadPdf = async () => {
-    setGeneratingPdf(true);
+  const exportPdf = async () => {
+    setExporting(true);
     try {
-        const canvas = await html2canvas(printRef.current, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`Relatorio_BI_Executivo.pdf`);
-    } finally { setGeneratingPdf(false); }
+      const canvas = await html2canvas(printRef.current, { scale: 2, backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim() });
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const w = pdf.internal.pageSize.getWidth();
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, (canvas.height * w) / canvas.width);
+      pdf.save(`visao-geral_${period.start}_${period.end}.pdf`);
+    } finally { setExporting(false); }
   };
 
-  const openTable = (type, title, dataType = 'REVENUE') => {
-    if (!reportData) return;
-    let dataToShow = null;
-
-    if (type === 'TAXES') {
-        dataToShow = reportData.months.reduce((acc, m) => ({
-            tax_icms:      (acc.tax_icms      || 0) + Number(m.tax_icms      || 0),
-            tax_pis:       (acc.tax_pis       || 0) + Number(m.tax_pis       || 0),
-            tax_cofins:    (acc.tax_cofins     || 0) + Number(m.tax_cofins    || 0),
-            tax_iss:       (acc.tax_iss        || 0) + Number(m.tax_iss       || 0),
-            tax_irpj_csll: (acc.tax_irpj_csll  || 0) + Number(m.tax_irpj_csll || 0),
-        }), {});
-    } else if (type === 'CATEGORIES') {
-        dataToShow = reportData.categories ||[];
-    } else if (type === 'EVOLUTION') {
-        dataToShow = reportData.months ||[];
-    }
-
-    setDetailModal({ open: true, type: type, title: title, data: dataToShow, dataType: dataType });
+  const shareWhatsApp = () => {
+    const text = `Resumo ${period.start} a ${period.end}\nFaturamento: ${brl(summary.totalRevenue)}\nSaídas: ${brl(saidas)}\nLucro: ${brl(summary.totalProfit)}\nMargem: ${pct(margin, 1)}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
 
-  useEffect(() => {
-    if (!companyId && !groupId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      const startDate = `${period.start}-01`;
-      const endDate = `${period.end}-31`;
-      try {
-        const payload = { startDate, endDate };
-        if (groupId) payload.groupId = groupId; // Lógica Consolidada
-        else payload.companyIds =[companyId]; // Lógica Individual
-
-        const resReport = await axios.post(`${apiBase}/api/report`, payload);
-        setReportData(resReport.data);
-        
-        if (companyId) {
-            const resRanking = await axios.get(`${apiBase}/api/reports/partners-ranking`, { params: { companyId, startDate, endDate } });
-            setRankingData(resRanking.data);
-        } else {
-            setRankingData({ clients: [], suppliers:[] });
-        }
-      } catch (error) { console.error("Erro dashboard:", error); } finally { setLoading(false); }
-    };
-    fetchData();
-  },[companyId, groupId, period, apiBase]);
-
-  if (loading || !reportData) return <div className="h-full flex items-center justify-center py-40"><Loader className="animate-spin text-blue-600" size={48}/></div>;
-
-  const { months, summary, categories } = reportData;
-  const marginValue = summary.totalRevenue > 0 ? ((summary.totalProfit / summary.totalRevenue) * 100) : 0;
-  const maxClientVal = rankingData.clients.length > 0 ? Number(rankingData.clients[0].value || 0) : 1;
-  const maxSupplierVal = rankingData.suppliers.length > 0 ? Number(rankingData.suppliers[0].value || 0) : 1;
-
-  // --- OPÇÕES DE GRÁFICOS COM INTERAÇÃO COMPLETA ---
-  const fullInteractionOptions = { 
-    responsive: true, 
-    maintainAspectRatio: false, 
-    interaction: { mode: 'index', intersect: false }, 
-    scales: { 
-        x: { grid: { display: false }, ticks: { font: { weight: 'bold' } } }, 
-        y: { position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] }, ticks: { font: { family: 'monospace' } } }, 
-        y1: { position: 'right', grid: { drawOnChartArea: false }, display: true, ticks: { callback: (v) => `${v}%`, font: { weight: 'bold' } } } 
-    },
-    plugins: {
-        legend: { position: 'bottom', labels: { font: { weight: 'bold' }, usePointStyle: true } },
-        tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.95)', titleFont: { size: 14, weight: 'bold' }, padding: 12, cornerRadius: 12 }
-    }
-  };
+  const labels = months.map((m) => monthLabel(m.monthKey));
 
   return (
-    <div className="p-6 space-y-10 w-full max-w-[1600px] mx-auto pb-20 animate-in fade-in duration-700">
-      
-      {/* WRAPPER PARA EXPORTAÇÃO PDF */}
-      <div ref={printRef} className="space-y-10">
-          
-          {/* HEADER EXECUTIVO */}
-          <div className="flex flex-col xl:flex-row justify-between items-center gap-10 mb-10 border-b border-slate-100 dark:border-slate-800 pb-10">
-              <div className="text-center xl:text-left">
-                  <h1 className="text-6xl font-black text-slate-900 dark:text-white tracking-tighter italic leading-none">{groupId ? 'Visão Consolidada' : 'Performance Unidade'}</h1>
-                  <p className="text-slate-400 font-black text-[11px] uppercase tracking-[0.4em] mt-3 flex items-center justify-center xl:justify-start gap-3">
-                    <Target size={16} className="text-blue-600 dark:text-blue-500"/> {groupId ? 'ALGORITMOS DE HOLDING ATIVOS' : 'ANALISE INDIVIDUAL ATIVA'}
-                  </p>
-              </div>
-              
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                <div className="flex items-center gap-3">
-                    <button onClick={handleShareWhatsApp} className="px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl shadow-xl flex items-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all hover:-translate-y-1"><MessageCircle size={16}/> Zap</button>
-                    <button onClick={handleExportExcel} className="px-6 py-4 bg-slate-900 dark:bg-slate-700 hover:bg-black dark:hover:bg-slate-600 text-white rounded-2xl shadow-xl flex items-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all hover:-translate-y-1"><FileSpreadsheet size={16}/> Excel</button>
-                    <button onClick={handleExportHTML} className="px-6 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl shadow-xl flex items-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:-translate-y-1"><FileCode size={16}/> Web</button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={handleSetCurrentYear}
-                        className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-all shadow-sm flex items-center gap-2 font-black text-[9px] uppercase tracking-widest"
-                        title="Filtrar Ano Atual"
-                    >
-                        <CalendarRange size={18} />
-                        <span className="hidden sm:inline">Ano Atual</span>
-                    </button>
-
-                    <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm ring-4 ring-slate-100/50 dark:ring-slate-800/50">
-                        <Filter size={20} className="text-slate-400 ml-2"/>
-                        <input type="month" value={period.start} onChange={(e) => setPeriod({...period, start: e.target.value})} className="border-none bg-transparent text-slate-900 dark:text-white font-black text-[9px] outline-none uppercase cursor-pointer"/>
-                        <span className="text-slate-300 font-black">➜</span>
-                        <input type="month" value={period.end} onChange={(e) => setPeriod({...period, end: e.target.value})} className="border-none bg-transparent text-slate-900 dark:text-white font-black text-[9px] outline-none uppercase cursor-pointer"/>
-                    </div>
-                </div>
-              </div>
-          </div>
-
-          {/* GRID DE KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
-              <PremiumCard title="Faturamento Bruto" value={formatCurrency(summary.totalRevenue)} sub={groupId ? "Holding Total" : "Receita Bruta"} icon={Wallet} color="text-blue-600"/>
-              
-              <PremiumCard title="Margem Líquida" value={`${marginValue.toFixed(1)}%`} sub={groupId ? "Média Ponderada" : "Rentabilidade"} icon={Target} color="text-indigo-600">
-                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden"><motion.div initial={{width:0}} animate={{width:`${Math.min(marginValue, 100)}%`}} transition={{duration:1.5}} className="h-full bg-indigo-600" /></div>
-              </PremiumCard>
-              
-              <PremiumCard title="Lucro Líquido" value={formatCurrency(summary.totalProfit)} sub="Resultado Final" icon={TrendingUp} color={summary.totalProfit >= 0 ? "text-emerald-600" : "text-rose-600"}/>
-              
-              <PremiumCard title="Fluxo de Saída" value={formatCurrency(summary.totalTaxes + summary.totalCosts)} sub="Custos + Impostos" icon={TrendingDown} color="text-rose-600"/>
-
-              {/* --- NOVO CARD PARA EXPLICAR O EMPRÉSTIMO (SÓ APARECE SE TIVER VALOR) --- */}
-              {summary.totalPatrimonial > 0 && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm flex flex-col justify-between h-full group relative">
-                    <div className="min-w-0">
-                        <div className="w-fit p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 mb-2"><Building2 size={16} /></div>
-                        <p className="text-amber-700 dark:text-amber-500 text-[9px] font-black uppercase tracking-widest mb-0.5 flex items-center gap-1">
-                            Saídas de Capital
-                            <div className="relative inline-block cursor-help">
-                                <Info size={12} className="text-amber-500 hover:text-amber-700 transition-colors" />
-                                {/* Tooltip explicativo */}
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-900 text-white text-[10px] p-3 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
-                                    <p className="font-bold mb-1">Pagamentos Fora da DRE</p>
-                                    Este valor refere-se a pagamentos de empréstimos, dividendos e dívidas passadas. Eles afetam o caixa, mas NÃO entram no cálculo de Despesas para não distorcer o seu Lucro Operacional (DRE).
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
-                                </div>
-                            </div>
-                        </p>
-                        <h3 className="text-sm font-black tracking-tighter truncate text-amber-700 dark:text-amber-500" title={formatCurrency(summary.totalPatrimonial)}>
-                            {formatCurrency(summary.totalPatrimonial)}
-                        </h3>
-                        <p className="text-[9px] text-amber-600 dark:text-amber-600 font-medium truncate">Empréstimos / Dívidas</p>
-                    </div>
-                  </motion.div>
-              )}
-          </div>
-
-          {/* GRÁFICOS PRINCIPAIS */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 shadow-sm col-span-2">
-                <div className="flex justify-between items-center mb-10">
-                    <h3 className="font-black text-slate-900 dark:text-white text-[11px] uppercase tracking-[0.3em] flex items-center gap-3">
-                        <BarChart3 className="text-blue-600" size={20}/> Evolução {groupId ? 'Consolidada' : ''}
-                    </h3>
-                    <button onClick={() => openTable('EVOLUTION', 'Histórico Mensal', 'REVENUE')} className="px-5 py-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 font-black text-[9px] uppercase tracking-widest flex gap-2 items-center transition-all shadow-sm">
-                        <TableIcon size={18}/> Ver Dados
-                    </button>
-                </div>
-                <div className="h-96">
-                    <Bar data={{ 
-                        labels: months.map(m => m.monthKey), 
-                        datasets:[
-                            { type: 'line', label: 'Margem %', data: months.map(m => m.totalRevenue > 0 ? ((m.profit/m.totalRevenue)*100).toFixed(1) : 0), borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', yAxisID: 'y1', tension: 0.4, pointRadius: 0, order: 0 },
-                            { label: 'Faturamento', data: months.map(m => m.totalRevenue), backgroundColor: '#2563EB', borderRadius: 8, yAxisID: 'y', order: 1 },
-                            { label: 'Lucro Líquido', data: months.map(m => m.profit), backgroundColor: months.map(m => m.profit >= 0 ? '#10B981' : '#EF4444'), borderRadius: 8, yAxisID: 'y', order: 2 }
-                        ]
-                    }} options={fullInteractionOptions} />
-                </div>
-              </div>
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative text-center">
-                 <div className="flex justify-between items-center mb-10">
-                     <h3 className="font-black text-slate-900 dark:text-white text-[11px] uppercase tracking-[0.3em] flex items-center gap-3">
-                         <PieChart className="text-blue-600" size={20}/> Categorias
-                     </h3>
-                     <button onClick={() => openTable('CATEGORIES', 'Detalhamento por Categoria')} className="p-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 transition-all">
-                         <TableIcon size={20}/>
-                     </button>
-                 </div>
-                 
-              <div className="h-80 flex flex-col items-center justify-center relative">
-                  <div className="text-center mb-4">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic block">
-                          Movimentado
-                      </span>
-                      <span className="text-2xl font-black text-slate-900 dark:text-white italic tracking-tighter" title={formatCurrency(categories.reduce((a,b)=>a+Number(b.total),0))}>
-                          {formatCurrency(categories.reduce((a,b)=>a+Number(b.total),0))}
-                      </span>
-                  </div>
-
-                  <div className="w-full h-52">
-                      {categories.length > 0 ? (
-                          <Doughnut 
-                              data={{ 
-                                  labels: categories.map(c => `${c.name} (${c.type === 'REVENUE' ? '+' : '-'})`), 
-                                  datasets:[{ 
-                                      data: categories.map(c => c.total), 
-                                      backgroundColor: categories.map((c, i) => getCategoryColor(c.type, i)), 
-                                      borderWidth: 0 
-                                  }] 
-                              }} 
-                              options={{ 
-                                  cutout: '75%', 
-                                  plugins: { legend: { display: false } },
-                                  maintainAspectRatio: false
-                              }} 
-                          />
-                      ) : (
-                          <p className="text-slate-300 dark:text-slate-600 font-black text-[9px] uppercase italic">Sem dados</p>
-                      )}
-                  </div>
-              </div>
-                 
-              </div>
-          </div>
-
-          {/* GRÁFICOS SECUNDÁRIOS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 shadow-sm"><div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 dark:text-white text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><Layers className="text-blue-600" size={20}/> Estrutura de Gastos</h3><button onClick={() => openTable('EVOLUTION', 'Custos Analíticos', 'EXPENSE')} className="p-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 transition-all"><TableIcon size={18}/></button></div><div className="h-80"><Bar data={{ labels: months.map(m => m.monthKey), datasets:[{ label: 'Impostos', data: months.map(m => m.totalTaxes), backgroundColor: '#F59E0B', borderRadius: 4 }, { label: 'Compras', data: months.map(m => m.totalPurchases), backgroundColor: '#6366F1', borderRadius: 4 }, { label: 'Despesas', data: months.map(m => m.totalExpenses), backgroundColor: '#EC4899', borderRadius: 4 }] }} options={fullInteractionOptions} /></div></div>
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 shadow-sm"><div className="flex justify-between items-center mb-10"><h3 className="font-black text-slate-900 dark:text-white text-[11px] uppercase tracking-[0.3em] flex items-center gap-3"><Receipt className="text-slate-900 dark:text-slate-300" size={20}/> Matriz Tributária</h3><button onClick={() => openTable('TAXES', 'Detalhamento de Impostos')} className="p-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 transition-all"><TableIcon size={18}/></button></div><div className="h-80"><Bar data={{ labels: months.map(m => m.monthKey), datasets:[{ label: 'ICMS', data: months.map(m => m.tax_icms), backgroundColor: '#2563EB' }, { label: 'PIS', data: months.map(m => m.tax_pis), backgroundColor: '#F59E0B' }, { label: 'COFINS', data: months.map(m => m.tax_cofins), backgroundColor: '#10B981' }, { label: 'ISS', data: months.map(m => m.tax_iss), backgroundColor: '#8B5CF6' }, { label: 'IRPJ/CSLL', data: months.map(m => m.tax_irpj_csll), backgroundColor: '#EF4444' }] }} options={fullInteractionOptions} /></div></div>
-          </div>
-
-          {/* RANKING (SÓ APARECE SE NÃO FOR GRUPO CONSOLIDADO) */}
-          {!groupId && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-[550px]"><div className="flex justify-between items-center mb-10 text-[11px] font-black uppercase tracking-[0.3em] text-slate-900 dark:text-white italic"><span className="flex items-center gap-3"><Users className="text-blue-600" size={22}/> Top Parceiros</span><Trophy className="text-yellow-500" size={22}/></div><div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{rankingData.clients.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 font-black">Vazio</div>) : (rankingData.clients.map((c, i) => <RankingItem key={i} rank={i+1} name={c.name} value={c.value} maxValue={maxClientVal} type="client" />))}</div></div>
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-[550px]"><div className="flex justify-between items-center mb-10 text-[11px] font-black uppercase tracking-[0.3em] text-slate-900 dark:text-white italic"><span className="flex items-center gap-3"><ShoppingBag className="text-rose-600" size={22}/> Matriz de Fornecedores</span></div><div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{rankingData.suppliers.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 font-black">Vazio</div>) : (rankingData.suppliers.map((s, i) => <RankingItem key={i} rank={i+1} name={s.name} value={s.value} maxValue={maxSupplierVal} type="supplier" />))}</div></div>
+    <Page wide>
+      <PageHeader
+        title={groupId ? 'Visão geral do grupo' : 'Visão geral'}
+        description={groupId ? `Soma das ${companyIds.length} empresas do grupo no período.` : 'Resultado da empresa no período, a partir dos lançamentos mensais.'}
+        actions={(
+          <>
+            <div className="flex items-center gap-2">
+              <Input type="month" aria-label="Mês inicial" value={period.start} onChange={(e) => e.target.value && setPeriod({ ...period, start: e.target.value })} className="w-40" />
+              <span className="text-ink-3 text-sm">até</span>
+              <Input type="month" aria-label="Mês final" value={period.end} onChange={(e) => e.target.value && setPeriod({ ...period, end: e.target.value })} className="w-40" />
+              <Button icon={CalendarRange} onClick={() => setPeriod({ start: `${currentYear()}-01`, end: `${currentYear()}-12` })}>Ano atual</Button>
             </div>
-          )}
-      </div>
-
-      <div className="flex justify-end gap-5">
-        <button onClick={handleDownloadPdf} disabled={generatingPdf} className="bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white px-12 py-6 rounded-[2rem] font-black text-[12px] uppercase tracking-[0.4em] shadow-2xl transition-all flex items-center gap-4 hover:-translate-y-2">{generatingPdf ? <Loader className="animate-spin" size={20}/> : <><Printer size={20} /> Exportar Relatório Master</>}</button>
-      </div>
-
-      {/* MODAL DE TABELAS */}
-      <AnimatePresence>
-        {detailModal.open && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl flex justify-center items-center z-50 p-6" onClick={() => setDetailModal({ ...detailModal, open: false })}>
-                <motion.div initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} className="bg-white dark:bg-slate-900 w-full max-w-6xl rounded-[4rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800" onClick={(e) => e.stopPropagation()}>
-                    <div className="p-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50"><h2 className="font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] text-sm flex items-center gap-4 italic"><FileText className="text-blue-600" size={24}/> {detailModal.title}</h2><button onClick={() => setDetailModal({ ...detailModal, open: false })} className="p-3 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-400 hover:text-rose-500 transition-colors rounded-2xl"><X size={32}/></button></div>
-                    <div className="p-6 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-left"><thead className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] border-b border-slate-100 dark:border-slate-800"><tr><th className="pb-6">Descrição Item</th><th className="pb-6 text-right">Valor Consolidado</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                                {detailModal.type === 'CATEGORIES' && Array.isArray(detailModal.data) ? (
-                                    detailModal.data.map((r, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 text-base uppercase italic">{r.name}</td><td className="py-6 text-right font-mono font-black text-slate-900 dark:text-white text-lg">{formatCurrency(r.total)}</td></tr>))
-                                ) : detailModal.type === 'TAXES' && detailModal.data ? ([{l: 'ICMS', v: detailModal.data.tax_icms || 0}, {l: 'PIS', v: detailModal.data.tax_pis || 0}, {l: 'COFINS', v: detailModal.data.tax_cofins || 0}, {l: 'ISS', v: detailModal.data.tax_iss || 0}, {l: 'IRPJ', v: detailModal.data.tax_irpj || 0}, {l: 'CSLL', v: detailModal.data.tax_csll || 0}].sort((a,b)=>b.v-a.v).map((r, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 uppercase italic text-base">{r.l}</td><td className="py-6 text-right font-mono font-black text-blue-600 dark:text-blue-400 text-lg">{formatCurrency(r.v)}</td></tr>))
-                                ) : detailModal.type === 'EVOLUTION' && Array.isArray(detailModal.data) ? (
-                                    detailModal.data.map((r, i) => {
-                                        const value = detailModal.dataType === 'EXPENSE' 
-                                            ? (Number(r.totalTaxes || 0) + Number(r.totalPurchases || 0) + Number(r.totalExpenses || 0))
-                                            : (r.totalRevenue || 0);
-                                        return (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td className="py-6 font-black text-slate-700 dark:text-slate-300 text-base italic">{r.monthKey}</td><td className="py-6 text-right font-mono font-black text-slate-900 dark:text-white text-lg">{formatCurrency(value)}</td></tr>);
-                                    })
-                                ) : (
-                                    <tr><td colSpan="2" className="py-6 text-center text-slate-400 font-black italic">Nenhum dado disponível</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </motion.div>
-            </motion.div>
+            <Button icon={FileSpreadsheet} onClick={exportExcel} disabled={months.length === 0}>Excel</Button>
+            <Button icon={FileDown} onClick={exportPdf} loading={exporting}>PDF</Button>
+            <Button icon={MessageCircle} onClick={shareWhatsApp}>WhatsApp</Button>
+          </>
         )}
-      </AnimatePresence>
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 8px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 20px; border: 2px solid transparent; background-clip: padding-box; } html[data-theme='dark'] .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border: 2px solid transparent; background-clip: padding-box; }`}</style>
-    </div>
+      />
+
+      <div ref={printRef} className="space-y-6">
+        {months.length === 0 ? (
+          <Card><EmptyState title="Nenhum lançamento neste período" description="Registre os meses em “Lançamentos do mês” ou importe a DRE/balancetes da contabilidade." /></Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <Stat label="Faturamento" value={brl(summary.totalRevenue)} icon={Wallet} hint="Receita operacional bruta" />
+              <Stat label="Saídas" value={brl(saidas)} icon={TrendingDown} hint="Impostos + compras + despesas" tone="neg" />
+              <Stat label="Lucro líquido" value={brl(summary.totalProfit)} icon={TrendingUp} tone={summary.totalProfit >= 0 ? 'pos' : 'neg'} hint="Receitas − saídas" />
+              <Stat label="Margem líquida" value={pct(margin, 1)} icon={Percent} hint="Lucro ÷ faturamento" />
+              <Stat label="Saídas de capital" value={brl(summary.totalPatrimonial)} icon={Landmark} tone="warn" hint="Empréstimos e dívidas (fora da DRE)" />
+            </div>
+            {summary.totalPatrimonial > 0 && (
+              <Alert tone="info" title="Sobre as saídas de capital">
+                Pagamentos de empréstimos, dividendos e dívidas antigas saem do caixa, mas não entram como despesa no lucro, para não distorcer o resultado operacional.
+              </Alert>
+            )}
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardHeader title="Faturamento e lucro por mês" description="Barras em reais; a linha mostra a margem (%)." />
+                <div className="h-80">
+                  <Bar
+                    data={{
+                      labels,
+                      datasets: [
+                        { type: 'line', label: 'Margem', data: months.map((m) => (m.totalRevenue > 0 ? (m.profit / m.totalRevenue) * 100 : 0)), borderColor: SERIES.margin, backgroundColor: SERIES.margin, yAxisID: 'y1', tension: 0.3, pointRadius: 2 },
+                        { label: 'Faturamento', data: months.map((m) => m.totalRevenue), backgroundColor: SERIES.revenue, borderRadius: 4, yAxisID: 'y' },
+                        { label: 'Lucro líquido', data: months.map((m) => m.profit), backgroundColor: months.map((m) => (m.profit >= 0 ? SERIES.profit : SERIES.loss)), borderRadius: 4, yAxisID: 'y' },
+                      ],
+                    }}
+                    options={baseChartOptions({ percentAxis: true })}
+                  />
+                </div>
+              </Card>
+              <Card>
+                <CardHeader title="Para onde foi o dinheiro" description="Saídas de cada mês, por tipo." />
+                <div className="h-80">
+                  <Bar
+                    data={{
+                      labels,
+                      datasets: [
+                        { label: 'Impostos', data: months.map((m) => m.totalTaxes), backgroundColor: SERIES.taxes },
+                        { label: 'Compras', data: months.map((m) => m.totalPurchases), backgroundColor: SERIES.purchases },
+                        { label: 'Despesas', data: months.map((m) => m.totalExpenses), backgroundColor: SERIES.expenses },
+                      ],
+                    }}
+                    options={baseChartOptions({ stacked: true })}
+                  />
+                </div>
+              </Card>
+            </div>
+
+            <Card padded={false}>
+              <div className="p-5 pb-3"><CardHeader className="mb-0" title="Mês a mês" description="Os números por trás dos gráficos." /></div>
+              <SheetFrame className="px-5 pb-5">
+                <table className="sheet min-w-[860px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Mês</th><th className="text-right">Faturamento</th><th className="text-right">Outras receitas</th>
+                      <th className="text-right">Impostos</th><th className="text-right">Compras</th><th className="text-right">Despesas</th>
+                      <th className="text-right">Lucro líquido</th><th className="text-right">Margem</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {months.map((m) => (
+                      <tr key={m.monthKey}>
+                        <td className="cell">{monthLabel(m.monthKey)}</td>
+                        <td className="cell text-right num">{money(m.totalRevenue)}</td>
+                        <td className="cell text-right num">{money(m.otherRevenue)}</td>
+                        <td className="cell text-right num">{money(m.totalTaxes)}</td>
+                        <td className="cell text-right num">{money(m.totalPurchases)}</td>
+                        <td className="cell text-right num">{money(m.totalExpenses)}</td>
+                        <td className={`cell text-right num font-medium ${m.profit >= 0 ? 'text-pos' : 'text-neg'}`}>{money(m.profit)}</td>
+                        <td className="cell text-right num">{m.totalRevenue > 0 ? pct((m.profit / m.totalRevenue) * 100, 1) : '—'}</td>
+                      </tr>
+                    ))}
+                    <tr className="total">
+                      <td className="cell">Total</td>
+                      <td className="cell text-right num">{money(summary.totalRevenue)}</td>
+                      <td className="cell text-right num">{money(months.reduce((a, m) => a + m.otherRevenue, 0))}</td>
+                      <td className="cell text-right num">{money(summary.totalTaxes)}</td>
+                      <td className="cell text-right num">{money(months.reduce((a, m) => a + m.totalPurchases, 0))}</td>
+                      <td className="cell text-right num">{money(months.reduce((a, m) => a + m.totalExpenses, 0))}</td>
+                      <td className="cell text-right num">{money(summary.totalProfit)}</td>
+                      <td className="cell text-right num">{pct(margin, 1)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </SheetFrame>
+            </Card>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Impostos do período" description="Total de cada tributo lançado." />
+                <ul className="divide-y divide-line">
+                  {[...Object.entries(taxTotals), ...(otherTaxes > 0.005 ? [['Outros (DIFAL, FUST…)', otherTaxes]] : [])].sort((a, b) => b[1] - a[1]).map(([name, v]) => (
+                    <li key={name} className="flex justify-between py-2 text-sm">
+                      <span>{name}</span>
+                      <span className="num"><span className="text-ink-3 mr-3">{summary.totalTaxes > 0 ? pct((v / summary.totalTaxes) * 100, 1) : '—'}</span>{brl(v)}</span>
+                    </li>
+                  ))}
+                  <li className="flex justify-between py-2 text-sm font-semibold"><span>Total</span><span className="num">{brl(summary.totalTaxes)}</span></li>
+                </ul>
+              </Card>
+              <Card>
+                <CardHeader title="Detalhamento por categoria" description="Itens analíticos dos lançamentos (entradas e saídas)." />
+                {categories.length === 0 ? (
+                  <p className="text-sm text-ink-3 flex gap-2"><Info size={16} className="shrink-0" /> Nenhum item detalhado no período. O detalhamento é feito em “Lançamentos do mês”.</p>
+                ) : (
+                  <ul className="space-y-2.5 max-h-80 overflow-y-auto scroll-thin pr-1">
+                    {categories.map((c, i) => (
+                      <li key={`${c.name}-${c.type}-${i}`}>
+                        <div className="flex justify-between gap-3 text-sm">
+                          <span className="truncate">{c.name}</span>
+                          <span className={`num shrink-0 ${c.type === 'REVENUE' ? 'text-pos' : 'text-neg'}`}>{c.type === 'REVENUE' ? '+' : '−'} {brl(Number(c.total))}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${catTotal > 0 ? (Number(c.total) / catTotal) * 100 : 0}%`, background: c.type === 'REVENUE' ? SERIES.profit : SERIES.loss }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
+            {!groupId && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <RankingList title="Maiores clientes" items={ranking.clients} tone={SERIES.profit} />
+                <RankingList title="Maiores fornecedores" items={ranking.suppliers} tone={SERIES.loss} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Page>
   );
 };
 
