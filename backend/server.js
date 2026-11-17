@@ -810,6 +810,35 @@ app.post('/api/entries/clone', async (req, res) => {
     } catch (error) { await conn.rollback(); res.status(500).json({ error: error.message }); } finally { conn.release(); }
 });
 
+// Prévia do arquivo de lançamentos contábeis (layout TXT Questor) de um mês.
+app.get('/api/integration/questor-preview/:entryId', async (req, res) => {
+    try {
+        const [entries] = await pool.execute(
+            'SELECT me.*, c.tax_id AS company_cnpj FROM monthly_entries me JOIN companies c ON c.id = me.company_id WHERE me.id = ?',
+            [req.params.entryId]
+        );
+        if (entries.length === 0) return res.status(404).json({ error: 'Lançamento não encontrado.' });
+        const entry = entries[0];
+        // Bancos antigos podem não ter a coluna questor_account_code em categories.
+        const [codeColumn] = await pool.execute(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'questor_account_code'"
+        );
+        const [details] = await pool.execute(
+            `SELECT ed.*, cat.name AS category_name${codeColumn.length ? ', cat.questor_account_code' : ''}
+             FROM entry_details ed LEFT JOIN categories cat ON cat.id = ed.category_id
+             WHERE ed.entry_id = ? ORDER BY ed.id`,
+            [entry.id]
+        );
+        const cnpj = String(entry.company_cnpj || '').replace(/\D/g, '');
+        res.json({
+            period: String(entry.period_start).slice(0, 7),
+            lines: details.length,
+            withoutAccount: details.filter((d) => !d.questor_account_code).length,
+            txt: generateQuestorLayout(entry, details, cnpj),
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/entries/history', async (req, res) => {
     try {
         const [rows] = await pool.execute(

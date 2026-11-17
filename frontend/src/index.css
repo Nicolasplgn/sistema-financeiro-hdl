@@ -2,196 +2,146 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================
-   AJUSTE DE TAMANHO DE FONTE E BASE
-   ============================================ */
-@layer base {
-  html {
-    /* MUDANÇA AQUI: Voltou para 16px (100% de zoom padrão) */
-    font-size: 16px; 
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    line-height: 1.5;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-  }
-}
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-#root {
-  min-height: 100vh;
-}
-
-/* ============================================
-   VECTOR CONNECT — DESIGN TOKENS (TEMA CLARO)
-   ============================================ */
+/* =============================================================================
+   TOKENS DE COR
+   Toda a interface usa estas variáveis (via classes do Tailwind: bg-surface,
+   text-ink, border-line, bg-cell-input...). O tema escuro só troca os valores.
+   ============================================================================= */
 :root {
   color-scheme: light;
-  
-  --bg-base:        #f1f5f9;   /* fundo da página */
-  --bg-card:        #ffffff;   /* cards / painéis */
-  --bg-sidebar:     #1e293b;   /* sidebar (já era escura) */
-  --bg-hover:       #f8fafc;   /* hover de linhas de tabela */
-  --bg-input:       #ffffff;   /* inputs */
 
-  --border:         #e2e8f0;
-  --border-strong:  #cbd5e1;
+  --canvas: #f4f6f9;        /* fundo da página */
+  --surface: #ffffff;       /* cartões, tabelas */
+  --surface-2: #f8fafc;     /* faixas, cabeçalhos de tabela, células calculadas */
+  --surface-3: #eef2f6;     /* hover, trilhas */
+  --line: #e3e8ef;
+  --line-strong: #cbd5e1;
 
-  --text-primary:   #0f172a;
-  --text-secondary: #475569;
-  --text-muted:     #94a3b8;
-  --text-inverse:   #f8fafc;   
+  --ink: #0f172a;           /* texto principal */
+  --ink-2: #475569;         /* texto secundário */
+  --ink-3: #8a97a8;         /* legendas, rótulos */
 
-  --accent:         #3b82f6;   
-  --accent-hover:   #2563eb;
-  --accent-subtle:  #eff6ff;   
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eaf1ff;
+  --brand-ink: #ffffff;
+
+  --pos: #059669;
+  --pos-soft: #e7f7f1;
+  --neg: #dc2626;
+  --neg-soft: #fdecec;
+  --warn: #b45309;
+  --warn-soft: #fff6e0;
+
+  /* Planilha: célula que o usuário digita × célula calculada */
+  --cell-input: #fffbe6;
+  --cell-input-line: #f2d675;
+  --cell-input-focus: #fff3bf;
+
+  --sidebar: #0f172a;
+  --sidebar-ink: #cbd5e1;
+  --sidebar-ink-2: #64748b;
+  --sidebar-active: #1e293b;
+
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 20px 40px -12px rgba(15, 23, 42, 0.25);
 }
 
-/* ============================================
-   TEMA ESCURO (DARK MODE)
-   ============================================ */
-[data-theme="dark"] {
-  color-scheme: dark; /* Faz scrollbars e calendários ficarem escuros nativamente */
-  
-  --bg-base:        #0f172a;   /* Slate 900 - Fundo mais escuro */
-  --bg-card:        #1e293b;   /* Slate 800 - Fundo dos Cards */
-  --bg-sidebar:     #0f172a;
-  --bg-hover:       #334155;   /* Slate 700 - Fundos secundários/hover */
-  --bg-input:       #0f172a;   /* Slate 900 - Fundo de inputs */
+[data-theme='dark'] {
+  color-scheme: dark;
 
-  --border:         #334155;   /* Slate 700 */
-  --border-strong:  #475569;   /* Slate 600 */
+  --canvas: #0b1120;
+  --surface: #131c2e;
+  --surface-2: #182236;
+  --surface-3: #1f2b42;
+  --line: #24314a;
+  --line-strong: #334360;
 
-  --text-primary:   #f8fafc;   /* Branco puro para leitura */
-  --text-secondary: #cbd5e1;   /* Cinza claro para subtítulos */
-  --text-muted:     #94a3b8;   /* Cinza médio para detalhes */
-  --text-inverse:   #0f172a;
+  --ink: #e8eef7;
+  --ink-2: #aab6c8;
+  --ink-3: #74839a;
+
+  --brand: #4f8cff;
+  --brand-hover: #6b9dff;
+  --brand-soft: rgba(79, 140, 255, 0.14);
+  --brand-ink: #ffffff;
+
+  --pos: #34d399;
+  --pos-soft: rgba(52, 211, 153, 0.12);
+  --neg: #f87171;
+  --neg-soft: rgba(248, 113, 113, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+
+  --cell-input: #23282c;
+  --cell-input-line: #6b5d1e;
+  --cell-input-focus: #34352c;
+
+  --sidebar: #080d18;
+  --sidebar-ink: #cbd5e1;
+  --sidebar-ink-2: #5b6b83;
+  --sidebar-active: #172036;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 20px 40px -12px rgba(0, 0, 0, 0.6);
 }
 
-/* ==========================================================
-   HACK NUCLEAR DE MODO ESCURO (AGORA COBRE 100% DA TELA)
-   ========================================================== */
+@layer base {
+  html {
+    font-size: 15px;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-/* 1. Fundos (Backgrounds) */
-html[data-theme='dark'] .bg-white { background-color: var(--bg-card) !important; }
-html[data-theme='dark'] .bg-slate-50 { background-color: var(--bg-base) !important; }
-html[data-theme='dark'] .bg-slate-100 { background-color: var(--bg-hover) !important; }
-html[data-theme='dark'] .bg-gray-50 { background-color: var(--bg-base) !important; }
-html[data-theme='dark'] .bg-gray-100 { background-color: var(--bg-hover) !important; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--canvas);
+    color: var(--ink);
+  }
 
-/* 2. Textos (Colors) */
-html[data-theme='dark'] .text-slate-900,
-html[data-theme='dark'] .text-slate-800,
-html[data-theme='dark'] .text-gray-800,
-html[data-theme='dark'] .text-gray-900 { color: var(--text-primary) !important; }
+  #root { min-height: 100vh; }
 
-html[data-theme='dark'] .text-slate-700,
-html[data-theme='dark'] .text-slate-600,
-html[data-theme='dark'] .text-gray-700,
-html[data-theme='dark'] .text-gray-600 { color: var(--text-secondary) !important; }
+  *, *::before, *::after { box-sizing: border-box; }
 
-html[data-theme='dark'] .text-slate-500,
-html[data-theme='dark'] .text-slate-400,
-html[data-theme='dark'] .text-gray-500,
-html[data-theme='dark'] .text-gray-400 { color: var(--text-muted) !important; }
+  /* Números alinham coluna a coluna, como na planilha */
+  .num { font-variant-numeric: tabular-nums; }
 
-/* 3. Bordas (Borders) */
-html[data-theme='dark'] .border-slate-50,
-html[data-theme='dark'] .border-slate-100,
-html[data-theme='dark'] .border-slate-200,
-html[data-theme='dark'] .border-gray-100,
-html[data-theme='dark'] .border-gray-200 { border-color: var(--border) !important; }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 
-/* 4. Entradas de Dados (Inputs, Selects, Textareas) */
-html[data-theme='dark'] input:not([type="checkbox"]):not([type="radio"]),
-html[data-theme='dark'] select,
-html[data-theme='dark'] textarea {
-    background-color: var(--bg-input) !important;
-    color: var(--text-primary) !important;
-    border-color: var(--border) !important;
+  ::placeholder { color: var(--ink-3); opacity: 1; }
+
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 }
 
-html[data-theme='dark'] input::placeholder {
-    color: var(--text-muted) !important;
-    opacity: 0.7;
+@layer components {
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  .scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: padding-box; }
+
+  /* Grade de planilha */
+  .sheet { border-collapse: separate; border-spacing: 0; width: 100%; }
+  .sheet th, .sheet td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sheet tr > :first-child { border-left: 1px solid var(--line); }
+  .sheet thead tr:first-child > * { border-top: 1px solid var(--line); }
+  .sheet th { background: var(--surface-2); color: var(--ink-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 10px; white-space: nowrap; }
+  .sheet td { padding: 0; height: 34px; background: var(--surface); font-size: 13px; color: var(--ink); }
+  .sheet td.cell { padding: 0 10px; }
+  .sheet td.calc { background: var(--surface-2); color: var(--ink-2); padding: 0 10px; }
+  .sheet td.input { background: var(--cell-input); }
+  .sheet td.input:focus-within { background: var(--cell-input-focus); box-shadow: inset 0 0 0 2px var(--brand); }
+  .sheet tr.total td { background: var(--surface-3); font-weight: 700; color: var(--ink); }
+  .sheet tr.group td { background: var(--canvas); color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; height: 28px; padding: 0 10px; }
+  .sheet tbody tr:hover td.cell, .sheet tbody tr:hover td.calc { background: var(--surface-3); }
+  .sheet .sticky-col { position: sticky; left: 0; z-index: 1; }
+  .sheet thead .sticky-col { z-index: 2; }
+
+  .sheet-input { width: 100%; height: 100%; min-height: 33px; background: transparent; border: 0; outline: none; padding: 0 10px; font: inherit; color: var(--ink); }
+  .sheet-input.right { text-align: right; font-variant-numeric: tabular-nums; }
+  .sheet-input:disabled { color: var(--ink-3); cursor: not-allowed; }
+  select.sheet-input { cursor: pointer; padding-right: 4px; }
 }
-
-/* 5. Sombras no modo escuro (tira o brilho branco e põe sombra preta) */
-html[data-theme='dark'] .shadow-sm,
-html[data-theme='dark'] .shadow-md,
-html[data-theme='dark'] .shadow-lg,
-html[data-theme='dark'] .shadow-xl {
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
-}
-
-/* Remove setas de input number */
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button { 
-  -webkit-appearance: none; 
-  margin: 0; 
-}
-input[type=number] {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-/* ==========================================================
-   HACK DE CORES DE FUNDO (DRE, HIGHLIGHTS E TABELAS)
-   ========================================================== */
-
-/* Linhas de destaque na DRE (EBITDA, Margem, Receita Líquida) */
-html[data-theme='dark'] .bg-emerald-50,
-html[data-theme='dark'] .bg-emerald-100 { 
-  background-color: rgba(16, 185, 129, 0.1) !important; 
-}
-
-html[data-theme='dark'] .bg-blue-50,
-html[data-theme='dark'] .bg-blue-100 { 
-  background-color: rgba(59, 130, 246, 0.1) !important; 
-}
-
-html[data-theme='dark'] .bg-rose-50,
-html[data-theme='dark'] .bg-rose-100,
-html[data-theme='dark'] .bg-red-50,
-html[data-theme='dark'] .bg-red-100 { 
-  background-color: rgba(244, 63, 94, 0.1) !important; 
-}
-
-html[data-theme='dark'] .bg-amber-50,
-html[data-theme='dark'] .bg-amber-100,
-html[data-theme='dark'] .bg-yellow-50,
-html[data-theme='dark'] .bg-yellow-100 { 
-  background-color: rgba(245, 158, 11, 0.1) !important; 
-}
-
-/* Fundo da Coluna "Total Ano" e "AV%" na DRE (Slate 100/50/50) */
-html[data-theme='dark'] .bg-slate-50\/50,
-html[data-theme='dark'] .bg-slate-100\/50 {
-  background-color: rgba(255, 255, 255, 0.03) !important;
-}
-
-/* Arruma o Hover (quando passa o mouse) na DRE que estava forçando fundo branco */
-html[data-theme='dark'] .group-hover\:bg-white:hover {
-  background-color: var(--bg-hover) !important;
-}
-
-/* Textos coloridos mais vibrantes no modo escuro para leitura perfeita */
-html[data-theme='dark'] .text-emerald-600,
-html[data-theme='dark'] .text-emerald-700 { color: #34d399 !important; }
-
-html[data-theme='dark'] .text-rose-500,
-html[data-theme='dark'] .text-rose-600,
-html[data-theme='dark'] .text-rose-700 { color: #fb7185 !important; }
-
-html[data-theme='dark'] .text-blue-600,
-html[data-theme='dark'] .text-blue-700 { color: #60a5fa !important; }

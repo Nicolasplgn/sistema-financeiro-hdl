@@ -1,626 +1,352 @@
-// ARQUIVO: src/pages/FinancialEntries.jsx
-import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
+// Lançamentos do mês: uma "folha" por competência, com receitas, tributos,
+// custos e o detalhamento analítico (clientes, fornecedores, categorias).
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Copy, Pencil, Save, Trash2, Upload } from 'lucide-react';
+import http, { errorMessage } from '../services/http';
+import { Badge, Button, Card, CardHeader, Feedback, Field, IconButton, Input, Modal, Page, PageHeader, SheetLegend, Stat, Textarea } from '../components/ui';
+import { useConfirm } from '../components/ui/useConfirm';
+import { CalcCell, NumberCell, SelectCell, SheetFrame, TextCell } from '../components/ui/sheet';
 import ImportModal from '../components/ImportModal';
+import { brl, money, monthLabel, pct } from '../utils/format';
 
-// =================================================================================
-// IMPORTAÇÃO DOS REACT ICONS (Substituindo o Lucide)
-// =================================================================================
-import { 
-  FiSave, FiCheckCircle, FiTrendingUp, 
-  FiArrowDownCircle, FiCalendar, 
-  FiTrash2, FiEdit3, FiChevronDown, 
-  FiPlus, FiX, FiCopy, FiChevronLeft, FiChevronRight, FiAlertCircle,
-  FiInfo, FiUploadCloud, FiLoader, FiList, FiFileText
-} from 'react-icons/fi';
-import { FaEraser } from 'react-icons/fa';
-
-// =================================================================================
-// ESTADO INICIAL DO FORMULÁRIO
-// =================================================================================
-const INITIAL_FORM_STATE = {
+const EMPTY = {
   revenue: { resale: 0, product: 0, service: 0, rent: 0, other: 0 },
-  taxes: { icms: 0, difal: 0, iss: 0, fust: 0, funtell: 0, pis: 0, cofins: 0, csll: 0, irpj: 0, additionalIrpj: 0 },
+  taxes: { icms: 0, difal: 0, iss: 0, pis: 0, cofins: 0, irpj: 0, additionalIrpj: 0, csll: 0, fust: 0, funtell: 0 },
   purchasesTotal: 0,
   expensesTotal: 0,
-  notes: ''
+  notes: '',
 };
 
-// =================================================================================
-// COMPONENTE DE INPUT MONETÁRIO COM MÁSCARA
-// =================================================================================
-const MoneyInput = ({ label, value, onChange, readOnly = false }) => {
-  const handleChange = (e) => {
-    if (readOnly) return;
-    let val = e.target.value.replace(/\D/g, '');
-    val = (Number(val) / 100).toFixed(2);
-    onChange(val);
-  };
+const REVENUE_ROWS = [
+  { key: 'resale', label: 'Revenda de mercadorias' },
+  { key: 'product', label: 'Venda de produção própria' },
+  { key: 'service', label: 'Prestação de serviços' },
+  { key: 'rent', label: 'Aluguéis' },
+];
+const TAX_ROWS = [
+  { key: 'icms', label: 'ICMS / DAS (Simples Nacional)' },
+  { key: 'difal', label: 'DIFAL' },
+  { key: 'iss', label: 'ISS' },
+  { key: 'pis', label: 'PIS' },
+  { key: 'cofins', label: 'COFINS' },
+  { key: 'irpj', label: 'IRPJ' },
+  { key: 'additionalIrpj', label: 'Adicional de IRPJ' },
+  { key: 'csll', label: 'CSLL' },
+  { key: 'fust', label: 'FUST (telecom)' },
+  { key: 'funtell', label: 'FUNTTEL (telecom)' },
+];
 
-  return (
-    <div className="flex flex-col gap-1.5 group">
-      <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] ml-1 group-focus-within:text-blue-600 transition-colors flex items-center gap-1">
-        {label} {readOnly && <FiInfo size={10} className="text-slate-300"/>}
-      </label>
-      <div className={`relative flex items-center transition-all duration-300 ${readOnly ? 'bg-slate-50/50' : 'bg-white shadow-sm hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500'} border border-slate-200 rounded-xl px-4 py-3`}>
-        <span className="text-slate-400 font-bold mr-2 text-xs">R$</span>
-        <input
-          type="text"
-          readOnly={readOnly}
-          value={value ? Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
-          onChange={handleChange}
-          className={`w-full bg-transparent outline-none font-mono text-base font-bold text-slate-700 ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
-        />
-      </div>
-    </div>
-  );
+const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const shiftMonth = (key, offset) => { const [y, m] = key.split('-').map(Number); const d = new Date(y, m - 1 + offset, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+
+const fromEntry = (d) => ({
+  revenue: { resale: +d.revenue_resale || 0, product: +d.revenue_product || 0, service: +d.revenue_service || 0, rent: +d.revenue_rent || 0, other: +d.revenue_other || 0 },
+  taxes: { icms: +d.tax_icms || 0, difal: +d.tax_difal || 0, iss: +d.tax_iss || 0, pis: +d.tax_pis || 0, cofins: +d.tax_cofins || 0, irpj: +d.tax_irpj || 0, additionalIrpj: +d.tax_additional_irpj || 0, csll: +d.tax_csll || 0, fust: +d.tax_fust || 0, funtell: +d.tax_funtell || 0 },
+  purchasesTotal: +d.purchases_total || 0,
+  expensesTotal: +d.expenses_total || 0,
+  notes: d.notes || '',
+});
+
+const totalsOf = (form) => {
+  const operational = REVENUE_ROWS.reduce((a, r) => a + Number(form.revenue[r.key] || 0), 0);
+  const other = Number(form.revenue.other || 0);
+  const taxes = Object.values(form.taxes).reduce((a, b) => a + Number(b || 0), 0);
+  const costs = Number(form.purchasesTotal || 0) + Number(form.expensesTotal || 0);
+  const profit = operational + other - taxes - costs;
+  return { operational, other, taxes, costs, profit, margin: operational > 0 ? (profit / operational) * 100 : null };
 };
 
-// =================================================================================
-// SEÇÃO DE AGRUPAMENTO DE CAMPOS
-// =================================================================================
-const InputSection = ({ title, icon: Icon, color, children, description }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden h-full"
-  >
-    <div className="p-6 border-b border-slate-50 flex flex-col gap-1">
-      <div className="flex items-center gap-3">
-        <div className={`p-2.5 rounded-xl ${color.replace('text-', 'bg-').replace('600', '100')} ${color}`}>
-          <Icon size={18} strokeWidth={2.5} />
-        </div>
-        <h2 className="font-bold text-slate-800 tracking-tight">{title}</h2>
-      </div>
-      {description && <p className="text-[11px] text-slate-400 ml-11 font-medium">{description}</p>}
-    </div>
-    <div className="p-6 grid gap-5">{children}</div>
-  </motion.div>
-);
-
-// =================================================================================
-// COMPONENTE PRINCIPAL
-// =================================================================================
-const FinancialEntries = ({ companyId, apiBase }) => {
-  const BASE_URL = apiBase || `http://${window.location.hostname}:4000`;
-  const user = JSON.parse(localStorage.getItem('hdl_user'));
-
-  // ── Estados Principais ──────────────────────────────────────────────────────
-  const [currentMonth, setCurrentMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
-  const [form, setForm] = useState(INITIAL_FORM_STATE);
+const FinancialEntries = ({ companyId }) => {
+  const user = useMemo(() => { try { return JSON.parse(localStorage.getItem('hdl_user')); } catch { return null; } }, []);
+  const [confirm, confirmDialog] = useConfirm();
+  const [month, setMonth] = useState(thisMonth);
+  const [form, setForm] = useState(EMPTY);
   const [details, setDetails] = useState([]);
-  const[history, setHistory] = useState([]);
+  const [loadedMonth, setLoadedMonth] = useState(null);
+  const [exists, setExists] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [history, setHistory] = useState([]);
   const [partners, setPartners] = useState([]);
-  const[categories, setCategories] = useState([]);
-  const [status, setStatus] = useState(null);
-  const [showCloneModal, setShowCloneModal] = useState(false);
-  const[cloneTarget, setCloneTarget] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneTarget, setCloneTarget] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [entryVersion, setEntryVersion] = useState(0);
 
-  // ── Estado do Modal de Importação ────────────────────────────────────
-  const[isImportModalOpen, setIsImportModalOpen] = useState(false);
-
-  // ── Estado do Novo Item Analítico ───────────────────────────────────────────
-  const [newItem, setNewItem] = useState({ 
-    partner_id: '', 
-    category_id: '', 
-    amount: '', 
-    type: 'EXPENSE',
-    description: '' 
-  });
-
-  // ── Navegação de Mês ────────────────────────────────────────────────────────
-  const changeMonth = (offset) => {
-    const [year, month] = currentMonth.split('-').map(Number);
-    const date = new Date(year, month - 1 + offset, 1);
-    setCurrentMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
-  };
-
-  // ── Cálculo de Totais e Margens para a DRE ──────────────────────────────────
-    const totals = useMemo(() => {
-      // Faturamento Operacional (Grupos Principais)
-      const operationalRev = Number(form.revenue.resale) + Number(form.revenue.product) + Number(form.revenue.service) + Number(form.revenue.rent);
-      
-      // Receita Não Operacional (Grupo 6)
-      const otherRev = Number(form.revenue.other);
-      
-      // Receita Total (Para cálculo de lucro)
-      const totalRev = operationalRev + otherRev;
-
-      const totalTax = Object.values(form.taxes).reduce((a, b) => Number(a) + Number(b), 0);
-      const totalCost = Number(form.purchasesTotal) + Number(form.expensesTotal);
-      
-      // Lucro considera todas as receitas e desconta saídas
-      const profit = totalRev - totalTax - totalCost;
-      
-      // A margem real da empresa (Margem Operacional) deve ser baseada no faturamento operacional
-      const margin = operationalRev > 0 ? (profit / operationalRev) * 100 : 0;
-      
-      return { operationalRev, totalTax, totalCost, profit, margin };
-    }, [form]);
-
-  // ── Carregar Histórico e Dados Iniciais ─────────────────────────────────────
-  const loadInitialData = async () => {
-    try {
-      const [resPartners, resCategories, resHistory] = await Promise.all([
-        axios.get(`${BASE_URL}/api/partners/${companyId}`),
-        axios.get(`${BASE_URL}/api/categories`),
-        axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`)
-      ]);
-      
-      setPartners(resPartners.data);
-      setCategories(resCategories.data);
-      setHistory(resHistory.data);
-    } catch (error) { 
-        console.error("Erro ao carregar dados iniciais:", error); 
-    }
-  };
+  // Cadastros de apoio
+  useEffect(() => {
+    let alive = true;
+    Promise.all([http.get(`/partners/${companyId}`), http.get('/categories')])
+      .then(([p, c]) => {
+        if (!alive) return;
+        setPartners(p.data);
+        const seen = new Set();
+        setCategories(c.data.filter((x) => { const k = `${x.name}|${x.type}`; if (seen.has(k)) return false; seen.add(k); return true; }));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [companyId]);
 
   useEffect(() => {
-    if (companyId) loadInitialData();
-  },[companyId]);
+    let alive = true;
+    http.get('/entries/history', { params: { companyId } }).then((r) => alive && setHistory(r.data)).catch(() => {});
+    return () => { alive = false; };
+  }, [companyId, historyVersion]);
 
-  // ── Carregar Lançamentos do Mês Selecionado ─────────────────────────────────
+  // Mês aberto
   useEffect(() => {
-    if (!companyId) return;
-    
-    const loadCurrentEntry = async () => {
-      setStatus('loading');
-      try {
-        const res = await axios.get(`${BASE_URL}/api/entries`, { 
-            params: { companyId, month: `${currentMonth}-01` } 
-        });
-        
-        const data = res.data;
-        if (data) {
-          setForm({
-            revenue: { resale: data.revenue_resale, product: data.revenue_product, service: data.revenue_service, rent: data.revenue_rent, other: data.revenue_other },
-            taxes: { icms: data.tax_icms, difal: data.tax_difal, iss: data.tax_iss, fust: data.tax_fust, funtell: data.tax_funtell, pis: data.tax_pis, cofins: data.tax_cofins, csll: data.tax_csll, irpj: data.tax_irpj, additionalIrpj: data.tax_additional_irpj },
-            purchasesTotal: data.purchases_total || 0,
-            expensesTotal: data.expenses_total || 0,
-            notes: data.notes || ''
-          });
-          setDetails(data.details ||[]);
-        } else {
-          setForm(INITIAL_FORM_STATE);
-          setDetails([]);
-        }
-        setStatus(null);
-      } catch (error) { 
-          console.error("Erro ao carregar lançamento:", error);
-          setStatus(null); 
-      }
-    };
-    loadCurrentEntry();
-  }, [companyId, currentMonth]);
+    let alive = true;
+    http.get('/entries', { params: { companyId, month: `${month}-01` } })
+      .then((r) => {
+        if (!alive) return;
+        const d = r.data;
+        setForm(d ? fromEntry(d) : EMPTY);
+        setDetails(d?.details ? d.details.map((x, i) => ({ ...x, _key: `${x.id ?? i}` })) : []);
+        setExists(Boolean(d));
+        setDirty(false);
+        setLoadedMonth(month);
+      })
+      .catch((e) => alive && setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao abrir o mês.') }));
+    return () => { alive = false; };
+  }, [companyId, month, entryVersion]);
 
-  // ── Função de Limpeza Total ──────────────────────────────────────────────────
-  const handleClearEverything = () => {
-    if (window.confirm("Deseja limpar todos os campos e a lista de lançamentos analíticos deste formulário?")) {
-        setForm(INITIAL_FORM_STATE);
-        setDetails([]); 
-        setNewItem({ partner_id: '', category_id: '', amount: '', type: 'EXPENSE', description: '' });
-    }
-  };
+  const totals = useMemo(() => totalsOf(form), [form]);
+  const edit = (updater) => { setForm(updater); setDirty(true); };
+  const setRevenue = (key, v) => edit((f) => ({ ...f, revenue: { ...f.revenue, [key]: v } }));
+  const setTax = (key, v) => edit((f) => ({ ...f, taxes: { ...f.taxes, [key]: v } }));
 
-  // ── Salvar no Banco de Dados ─────────────────────────────────────────────────
-  const handleSaveData = async () => {
-    if (!companyId) return;
-    setStatus('saving');
+  const changeMonth = useCallback(async (next) => {
+    if (dirty && !(await confirm({ title: 'Sair sem salvar?', description: `As alterações de ${monthLabel(month)} ainda não foram salvas e serão perdidas.`, confirmLabel: 'Sair sem salvar', danger: true }))) return;
+    setMonth(next);
+  }, [dirty, confirm, month]);
+
+  const save = async () => {
+    setSaving(true);
     try {
-      const payload = { companyId, periodStart: `${currentMonth}-01`, userId: user?.id, userName: user?.full_name, ...form, details };
-      
-      await axios.post(`${BASE_URL}/api/entries`, payload);
-      
-      setStatus('success'); 
-      setTimeout(() => setStatus(null), 3000); 
-      
-      const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
-      setHistory(resHist.data);
-
-    } catch (error) { 
-        console.error("Erro ao salvar:", error);
-        setStatus('error'); 
-    }
+      await http.post('/entries', {
+        companyId, periodStart: `${month}-01`, userId: user?.id, userName: user?.full_name,
+        ...form, details: details.map(({ _key, ...d }) => d),
+      });
+      setDirty(false);
+      setExists(true);
+      setHistoryVersion((v) => v + 1);
+      setFeedback({ tone: 'success', text: `${monthLabel(month)} salvo.` });
+    } catch (e) {
+      setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao salvar o mês.') });
+    } finally { setSaving(false); }
   };
 
-  // ── Callback após importação bem-sucedida ────────────────────────────
-  const handleImportSuccess = async ({ period: importedPeriod }) => {
-    const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
-    setHistory(resHist.data);
-
-    if (importedPeriod && importedPeriod === currentMonth) {
-      const [y, m] = currentMonth.split('-');
-      const prev = m === '01' ? '02' : String(parseInt(m) - 1).padStart(2, '0');
-      setCurrentMonth(`${y}-${prev}`);
-      setTimeout(() => setCurrentMonth(`${y}-${m}`), 80);
-    } else if (importedPeriod) {
-      setCurrentMonth(importedPeriod);
-    }
+  const removeMonth = async (periodStart) => {
+    const key = periodStart.slice(0, 7);
+    if (!(await confirm({ title: `Excluir ${monthLabel(key)}?`, description: 'Apaga os valores e o detalhamento deste mês. A DRE e a visão geral deixam de contar este mês.', confirmLabel: 'Excluir mês', danger: true }))) return;
+    try {
+      await http.delete('/entries', { params: { companyId, month: periodStart } });
+      setHistoryVersion((v) => v + 1);
+      if (key === month) { setForm(EMPTY); setDetails([]); setExists(false); setDirty(false); }
+      setFeedback({ tone: 'success', text: `${monthLabel(key)} excluído.` });
+    } catch (e) { setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao excluir o mês.') }); }
   };
 
-  // ── Deletar Lançamento Histórico ─────────────────────────────────────────────
-  const handleDeleteEntry = async (date) => {
-      if(!confirm("Deseja apagar este registro histórico?")) return;
-      try {
-          await axios.delete(`${BASE_URL}/api/entries`, { params: { companyId, month: date } });
-          const res = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
-          setHistory(res.data);
-          
-          if(date === `${currentMonth}-01`) {
-              setForm(INITIAL_FORM_STATE);
-              setDetails([]);
-          }
-      } catch(e) { alert('Erro ao excluir'); }
+  const cloneMonth = async () => {
+    if (!cloneTarget || cloneTarget === month) return;
+    try {
+      await http.post('/entries/clone', { companyId, sourceMonth: month, targetMonth: cloneTarget });
+      setCloneOpen(false);
+      setHistoryVersion((v) => v + 1);
+      setFeedback({ tone: 'success', text: `${monthLabel(month)} copiado para ${monthLabel(cloneTarget)}.` });
+      setCloneTarget('');
+    } catch (e) { setFeedback({ tone: 'error', text: errorMessage(e, 'Erro ao copiar o mês.') }); }
   };
 
-  const formatCurrency = (value) => {
-      const num = Number(value);
-      if (isNaN(num)) return 'R$ 0,00';
-      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
+  // Detalhamento analítico
+  const editDetail = (key, patch) => { setDetails((ds) => ds.map((d) => (d._key === key ? { ...d, ...patch } : d))); setDirty(true); };
+  const addDetail = () => { setDetails((ds) => [...ds, { _key: `n${Date.now()}`, type: 'EXPENSE', category_id: '', partner_id: '', description: '', amount: 0 }]); setDirty(true); };
+  const removeDetail = (key) => { setDetails((ds) => ds.filter((d) => d._key !== key)); setDirty(true); };
+  const detailsIn = details.filter((d) => d.type === 'REVENUE').reduce((a, d) => a + Number(d.amount || 0), 0);
+  const detailsOut = details.filter((d) => d.type !== 'REVENUE').reduce((a, d) => a + Number(d.amount || 0), 0);
 
-  // Deduplica categorias pelo nome+tipo antes de renderizar
-  const uniqueCategories = useMemo(() => {
-    const seen = new Set();
-    return categories.filter(c => {
-        const key = `${c.name}|${c.type}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-  }, [categories]);
-  
-  const filteredPartners = partners.filter(p => newItem.type === 'REVENUE' ? (p.type === 'CLIENT' || p.type === 'BOTH') : (p.type === 'SUPPLIER' || p.type === 'BOTH'));
+  const ready = loadedMonth === month;
 
   return (
-    <div className="max-w-7xl mx-auto pb-20 px-6 animate-in fade-in duration-700">
-
-      {/* CABEÇALHO */}
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center py-10 gap-6">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
-            <div className="w-1.5 h-8 bg-blue-600 rounded-full"/> Vector Connect Enterprises
-          </h1>
-          <p className="text-slate-400 text-sm font-medium mt-1 uppercase tracking-widest text-[9px]">Gestão de Competência Mensal</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-           <button 
-             onClick={() => setIsImportModalOpen(true)}
-             className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 uppercase tracking-widest active:scale-95"
-           >
-             <FiUploadCloud size={16}/> Importar Dados
-           </button>
-
-           <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5">
-              <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><FiChevronLeft size={20}/></button>
-              <div className="flex items-center px-4 gap-2 border-x border-slate-100">
-                <FiCalendar size={16} className="text-blue-500" />
-                <input type="month" value={currentMonth} onChange={(e) => setCurrentMonth(e.target.value)} className="bg-transparent text-slate-700 font-bold text-sm border-none outline-none uppercase cursor-pointer" />
-              </div>
-              <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 text-slate-400 rounded-xl transition"><FiChevronRight size={20}/></button>
-           </div>
-           
-           <button onClick={() => setShowCloneModal(true)} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-2xl text-xs font-black hover:bg-slate-50 transition shadow-sm uppercase tracking-widest">
-             <FiCopy size={16} className="text-amber-500"/> Clonar Mês
-           </button>
-        </div>
-      </header>
-
-      {/* DASHBOARD DE RESULTADO DRE */}
-      <div className="relative mb-12">
-        <motion.div layout className="bg-slate-900 text-white rounded-[2.5rem] shadow-2xl border border-white/5 overflow-hidden">
-          <div className="flex flex-col lg:flex-row items-center justify-between px-10 py-8 gap-10">
-            <div className="flex items-center gap-6">
-              <div className={`p-5 rounded-3xl ${totals.profit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'} border border-white/5`}>
-                {totals.profit >= 0 ? <FiTrendingUp size={32} /> : <FiArrowDownCircle size={32} />}
-              </div>
-              <div>
-                <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Resultado Líquido (EBITDA)</p>
-                <div className="flex items-baseline gap-3">
-                  <h2 className="text-2xl font-black font-mono tracking-tighter italic">{formatCurrency(totals.profit)}</h2>
-                  <div className={`px-3 py-1 rounded-full text-[9px] font-black ${totals.profit >= 0 ? 'bg-emerald-500 text-emerald-950' : 'bg-rose-500 text-rose-950'}`}>
-                    {totals.margin.toFixed(1)}%
-                  </div>
-                </div>
-              </div>
+    <Page wide>
+      {confirmDialog}
+      <PageHeader
+        title="Lançamentos do mês"
+        description="Cada mês (competência) é uma folha: digite os valores nas células amarelas e clique em Salvar. A DRE e a visão geral são montadas a partir daqui."
+        actions={(
+          <>
+            <div className="flex items-center gap-1">
+              <IconButton variant="secondary" icon={ChevronLeft} label="Mês anterior" onClick={() => changeMonth(shiftMonth(month, -1))} />
+              <Input type="month" aria-label="Competência" value={month} onChange={(e) => e.target.value && changeMonth(e.target.value)} className="w-44" />
+              <IconButton variant="secondary" icon={ChevronRight} label="Próximo mês" onClick={() => changeMonth(shiftMonth(month, 1))} />
             </div>
-            <div className="grid grid-cols-3 gap-12 w-full lg:w-auto px-10 lg:border-l border-white/10 text-center lg:text-left">
-              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Faturamento</p><p className="font-mono text-sm font-bold text-emerald-400 tracking-tight">{formatCurrency(totals.operationalRev)}</p></div>
-              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Tributos</p><p className="font-mono text-sm font-bold text-amber-400 tracking-tight">{formatCurrency(totals.totalTax)}</p></div>
-              <div><p className="text-slate-500 text-[9px] font-black uppercase italic tracking-widest">Despesas</p><p className="font-mono text-sm font-bold text-rose-400 tracking-tight">{formatCurrency(totals.totalCost)}</p></div>
-            </div>
-          </div>
-        </motion.div>
+            <Button icon={Upload} onClick={() => setImportOpen(true)}>Importar da contabilidade</Button>
+            <Button icon={Copy} onClick={() => setCloneOpen(true)} disabled={!exists}>Copiar para outro mês</Button>
+            <Button variant="primary" icon={Save} loading={saving} onClick={save} disabled={!ready}>Salvar {monthLabel(month)}</Button>
+          </>
+        )}
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <SheetLegend />
+          {ready && (exists ? <Badge tone="pos">Mês já lançado</Badge> : <Badge>Mês ainda não lançado</Badge>)}
+          {dirty && <Badge tone="warn">Alterações não salvas</Badge>}
+        </div>
+      </PageHeader>
+
+      <Feedback value={feedback} onClose={() => setFeedback(null)} />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat label="Faturamento" value={brl(totals.operational)} hint={totals.other ? `+ ${brl(totals.other)} de outras receitas` : 'Receita operacional'} />
+        <Stat label="Tributos" value={brl(totals.taxes)} tone="warn" />
+        <Stat label="Compras e despesas" value={brl(totals.costs)} tone="neg" />
+        <Stat label="Resultado do mês" value={brl(totals.profit)} tone={totals.profit >= 0 ? 'pos' : 'neg'} hint={totals.margin === null ? 'sem faturamento' : `margem ${pct(totals.margin, 1)}`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        
-        {/* COLUNA 1: RECEITAS E MÓDULO ANALÍTICO */}
-        <div className="space-y-8">
-            <InputSection title="Faturamento Bruto" icon={FiTrendingUp} color="text-emerald-600" description="Entradas principais registradas">
-                <MoneyInput label="Revenda de Mercadorias" value={form.revenue.resale} onChange={value => setForm({...form, revenue: {...form.revenue, resale: value}})} />
-                <MoneyInput label="Produção Própria" value={form.revenue.product} onChange={value => setForm({...form, revenue: {...form.revenue, product: value}})} />
-                <MoneyInput label="Prestação de Serviços" value={form.revenue.service} onChange={value => setForm({...form, revenue: {...form.revenue, service: value}})} />
-                <MoneyInput label="Outras Receitas" value={form.revenue.other} onChange={value => setForm({...form, revenue: {...form.revenue, other: value}})} />
-            </InputSection>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <Card padded={false} className="p-5">
+          <CardHeader title={`Resultado de ${monthLabel(month)}`} description="Receitas − tributos − compras − despesas." />
+          <SheetFrame>
+            <table className="sheet">
+              <thead><tr><th className="text-left">Conta</th><th className="text-right w-[180px]">Valor (R$)</th></tr></thead>
+              <tbody>
+                <tr className="group"><td colSpan={2}>Receitas</td></tr>
+                {REVENUE_ROWS.map((r) => (
+                  <tr key={r.key}><td className="cell">{r.label}</td><NumberCell value={form.revenue[r.key]} label={r.label} min={0} disabled={!ready} onCommit={(v) => setRevenue(r.key, v)} /></tr>
+                ))}
+                <tr><td className="cell">Faturamento operacional</td><CalcCell value={totals.operational} strong /></tr>
+                <tr><td className="cell" title="Receitas fora da atividade principal (financeiras, venda de bens…)">Outras receitas (não operacionais)</td><NumberCell value={form.revenue.other} label="Outras receitas" min={0} disabled={!ready} onCommit={(v) => setRevenue('other', v)} /></tr>
 
-            {/* MÓDULO DE LANÇAMENTO ANALÍTICO */}
-            <div className="bg-slate-900 rounded-[2rem] p-6 shadow-2xl border border-slate-800 relative overflow-hidden">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-3xl" />
-                <h3 className="font-black text-white text-[9px] mb-6 flex items-center gap-2 uppercase tracking-[0.2em] relative z-10">
-                    <FiList size={14} className="text-blue-400"/> Detalhamento Analítico
-                </h3>
-                
-                <div className="flex gap-2 mb-6 bg-slate-800/50 p-1.5 rounded-2xl border border-white/5 relative z-10">
-                    <button onClick={() => setNewItem({...newItem, type: 'REVENUE'})} className={`flex-1 py-2.5 text-[9px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'REVENUE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-500 hover:text-slate-300'}`}>ENTRADA</button>
-                    <button onClick={() => setNewItem({...newItem, type: 'EXPENSE'})} className={`flex-1 py-2.5 text-[9px] font-black rounded-xl transition-all duration-300 ${newItem.type === 'EXPENSE' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'text-slate-500 hover:text-slate-300'}`}>SAÍDA</button>
-                </div>
+                <tr className="group"><td colSpan={2}>Tributos sobre o faturamento</td></tr>
+                {TAX_ROWS.map((r) => (
+                  <tr key={r.key}><td className="cell">{r.label}</td><NumberCell value={form.taxes[r.key]} label={r.label} min={0} disabled={!ready} onCommit={(v) => setTax(r.key, v)} /></tr>
+                ))}
+                <tr><td className="cell">Total de tributos</td><CalcCell value={totals.taxes} strong /></tr>
 
-                <div className="space-y-3 relative z-10">
-                    <div className="relative">
-                        <select value={newItem.category_id} onChange={e => setNewItem({...newItem, category_id: e.target.value})} className="w-full text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer">
-                            <option value="" disabled hidden>Classificação Contábil...</option>
-                            {uniqueCategories.filter(c => c.type === newItem.type).map(c => <option key={c.id} value={c.id} className="bg-slate-900 uppercase tracking-widest">{c.name}</option>)}
-                        </select>
-                        <FiChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
-                    </div>
+                <tr className="group"><td colSpan={2}>Custos e despesas</td></tr>
+                <tr><td className="cell" title="Mercadorias e matéria-prima compradas (CMV)">Compras diretas</td><NumberCell value={form.purchasesTotal} label="Compras diretas" min={0} disabled={!ready} onCommit={(v) => edit((f) => ({ ...f, purchasesTotal: v }))} /></tr>
+                <tr><td className="cell" title="Aluguel, salários, energia, honorários…">Despesas operacionais</td><NumberCell value={form.expensesTotal} label="Despesas operacionais" min={0} disabled={!ready} onCommit={(v) => edit((f) => ({ ...f, expensesTotal: v }))} /></tr>
 
-                    <div className="relative">
-                        <select value={newItem.partner_id} onChange={e => setNewItem({...newItem, partner_id: e.target.value})} className="w-full text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer">
-                            <option value="" disabled hidden>Parceiro / Entidade...</option>
-                            {filteredPartners.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
-                        </select>
-                        <FiChevronDown size={14} className="absolute right-4 top-4 text-slate-500 pointer-events-none" />
-                    </div>
+                <tr className="total"><td className="cell">Resultado do mês</td><td className={`cell text-right num ${totals.profit >= 0 ? 'text-pos' : 'text-neg'}`}>{money(totals.profit)}</td></tr>
+              </tbody>
+            </table>
+          </SheetFrame>
+          <Field label="Observações do mês" className="mt-4">
+            <Textarea value={form.notes} disabled={!ready} onChange={(e) => edit((f) => ({ ...f, notes: e.target.value }))} placeholder="Informações importantes para o fechamento…" />
+          </Field>
+        </Card>
 
-                    <div className="flex gap-2">
-                        <input 
-                            type="text" 
-                            placeholder="Histórico..." 
-                            value={newItem.description} 
-                            onChange={e => setNewItem({...newItem, description: e.target.value})} 
-                            className="flex-1 text-xs font-bold border-none rounded-xl p-4 bg-slate-800 text-slate-200 outline-none ring-1 ring-white/5 focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600" 
-                        />
-                        <div className="relative w-28">
-                            <span className="absolute left-3 top-4 text-[9px] font-bold text-slate-500">R$</span>
-                            <input 
-                                type="number" 
-                                placeholder="0.00" 
-                                value={newItem.amount} 
-                                onChange={e => setNewItem({...newItem, amount: e.target.value})} 
-                                className="w-full text-sm font-black border-none rounded-xl p-4 pl-8 bg-slate-800 text-blue-400 outline-none ring-1 ring-white/5 font-mono focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600"
-                            />
-                        </div>
-                        <button 
-                            type="button" 
-                            onClick={() => { 
-                                if (!newItem.category_id) return alert("Selecione uma Classificação Contábil.");
-                                if (!newItem.amount || Number(newItem.amount) <= 0) return alert("Informe um valor válido.");
-                                setDetails([...details, { ...newItem, id: Date.now() }]); 
-                                setNewItem({ ...newItem, amount: '', description: '' }); 
-                            }} 
-                            className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl transition shadow-lg active:scale-95 flex items-center justify-center"
-                            title="Adicionar Item"
-                        >
-                            <FiPlus size={20}/>
-                        </button>
-                    </div>
-                </div>
-
-                <div className="mt-6 space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar relative z-10">
-                    {details.map((item, index) => (
-                        <div key={item.id || index} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
-                            <div className="flex flex-col">
-                                <span className="font-black text-slate-200 text-[9px] uppercase tracking-tighter italic">{categories.find(c => c.id == item.category_id)?.name}</span>
-                                <span className="text-slate-500 text-[9px] font-medium leading-none">{item.description || partners.find(p => p.id == item.partner_id)?.name || 'Geral'}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className={`font-mono font-black text-xs ${item.type === 'REVENUE' ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(item.amount)}</span>
-                                <button onClick={() => setDetails(details.filter((_, i) => i !== index))} className="text-slate-600 hover:text-rose-500 transition-colors"><FiX size={14}/></button>
-                            </div>
-                        </div>
-                    ))}
-                    {details.length === 0 && (
-                        <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                            <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Nenhum item analítico</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-
-        {/* COLUNA 2: IMPOSTOS */}
-        <InputSection title="Deduções e Tributos" icon={FiFileText} color="text-amber-600" description="Impacto tributário do período">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-            <MoneyInput label="DAS / Simples Nacional" value={form.taxes.icms} onChange={v => setForm({...form, taxes: {...form.taxes, icms: v}})} />
-            <MoneyInput label="ISS Retido" value={form.taxes.iss} onChange={v => setForm({...form, taxes: {...form.taxes, iss: v}})} />
-            <MoneyInput label="PIS" value={form.taxes.pis} onChange={v => setForm({...form, taxes: {...form.taxes, pis: v}})} />
-            <MoneyInput label="COFINS" value={form.taxes.cofins} onChange={v => setForm({...form, taxes: {...form.taxes, cofins: v}})} />
-            <MoneyInput label="IRPJ" value={form.taxes.irpj} onChange={v => setForm({...form, taxes: {...form.taxes, irpj: v}})} />
-            <MoneyInput label="CSLL" value={form.taxes.csll} onChange={v => setForm({...form, taxes: {...form.taxes, csll: v}})} />
-            <MoneyInput label="FUST (Telecom)" value={form.taxes.fust} onChange={v => setForm({...form, taxes: {...form.taxes, fust: v}})} />
-            <MoneyInput label="FUNTELL" value={form.taxes.funtell} onChange={v => setForm({...form, taxes: {...form.taxes, funtell: v}})} />
-          </div>
-        </InputSection>
-        
-        {/* COLUNA 3: DESPESAS E SALVAR */}
-        <div className="space-y-8">
-          <InputSection title="Custos e Despesas" icon={FiArrowDownCircle} color="text-rose-600" description="Saídas operacionais fixas e variáveis">
-            <MoneyInput label="Compras Diretas" value={form.purchasesTotal} onChange={v => setForm({...form, purchasesTotal: v})} />
-            <MoneyInput label="Despesas Operacionais" value={form.expensesTotal} onChange={v => setForm({...form, expensesTotal: v})} />
-          </InputSection>
-
-          <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1 group-focus-within:text-blue-600 transition-colors">Notas e Justificativas</label>
-            <textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm h-32 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none text-slate-700 font-medium transition-all" placeholder="Informações relevantes para o fechamento..." />
-          </div>
-
-          <div className="flex gap-4">
-            <button onClick={handleClearEverything} className="w-20 h-16 flex items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-300 hover:text-rose-500 transition-all active:scale-95 shadow-sm" title="Limpar Tudo">
-              <FaEraser size={24} />
-            </button>
-            <button onClick={handleSaveData} disabled={status === 'saving'} className={`flex-1 h-16 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${status === 'success' ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}>
-              {status === 'saving' ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : status === 'success' ? <><FiCheckCircle size={18}/> Salvo!</> : <><FiSave size={18}/> Consolidar Mês</>}
-            </button>
-          </div>
-        </div>
+        <Card padded={false} className="p-5">
+          <CardHeader
+            title="Detalhamento analítico"
+            description="Opcional: de quem veio e para quem foi o dinheiro. Alimenta o ranking de clientes e fornecedores e as categorias da visão geral."
+            actions={<Button size="sm" onClick={addDetail} disabled={!ready}>+ Adicionar linha</Button>}
+          />
+          <SheetFrame maxHeight="560px">
+            <table className="sheet min-w-[720px]">
+              <thead>
+                <tr>
+                  <th className="text-left w-[110px]">Tipo</th>
+                  <th className="text-left">Categoria</th>
+                  <th className="text-left">Cliente / fornecedor</th>
+                  <th className="text-left">Histórico</th>
+                  <th className="text-right w-[130px]">Valor</th>
+                  <th className="w-10" aria-label="Ações" />
+                </tr>
+              </thead>
+              <tbody>
+                {details.map((d) => (
+                  <tr key={d._key}>
+                    <SelectCell value={d.type} label="Tipo" onChange={(v) => editDetail(d._key, { type: v, category_id: '', partner_id: '' })}>
+                      <option value="REVENUE">Entrada</option>
+                      <option value="EXPENSE">Saída</option>
+                    </SelectCell>
+                    <SelectCell value={d.category_id ?? ''} label="Categoria" onChange={(v) => editDetail(d._key, { category_id: v })}>
+                      <option value="">Escolha…</option>
+                      {categories.filter((c) => c.type === d.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </SelectCell>
+                    <SelectCell value={d.partner_id ?? ''} label="Cliente ou fornecedor" onChange={(v) => editDetail(d._key, { partner_id: v })}>
+                      <option value="">—</option>
+                      {partners.filter((p) => (d.type === 'REVENUE' ? p.type !== 'SUPPLIER' : p.type !== 'CLIENT')).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </SelectCell>
+                    <TextCell value={d.description || ''} label="Histórico" onCommit={(v) => editDetail(d._key, { description: v })} />
+                    <NumberCell value={Number(d.amount || 0)} label="Valor" min={0} onCommit={(v) => editDetail(d._key, { amount: v })} />
+                    <td className="cell text-center"><IconButton size="sm" variant="danger" icon={Trash2} label="Remover linha" onClick={() => removeDetail(d._key)} /></td>
+                  </tr>
+                ))}
+                {details.length === 0 && <tr><td colSpan={6} className="calc text-center text-ink-3 h-12">Nenhuma linha. Clique em “Adicionar linha”.</td></tr>}
+                {details.length > 0 && (
+                  <tr className="total">
+                    <td className="cell" colSpan={4}>Entradas {brl(detailsIn)} · Saídas {brl(detailsOut)}</td>
+                    <td className="cell text-right num">{money(detailsIn - detailsOut)}</td>
+                    <td className="cell" />
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </SheetFrame>
+          <p className="mt-2 text-xs text-ink-3">As linhas são gravadas junto com o mês, no botão Salvar. Cadastre clientes e fornecedores em “Clientes e fornecedores”.</p>
+        </Card>
       </div>
 
-      {/* HISTÓRICO CONSOLIDADO */}
-      <div className="mt-20">
-        <h2 className="text-sm font-black text-slate-800 flex items-center gap-3 mb-8">
-          <div className="w-1.5 h-6 bg-slate-300 rounded-full"/> Histórico de Consolidação
-        </h2>
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              <tr>
-                <th className="px-10 py-5">Período Fiscal</th>
-                <th className="px-10 py-5 text-right">Faturamento Total</th>
-                <th className="px-10 py-5 text-right">EBITDA</th>
-                <th className="px-10 py-5 text-center">Ações</th>
-              </tr>
+      <Card padded={false}>
+        <div className="p-5 pb-3"><CardHeader className="mb-0" title="Meses lançados" description="Clique em Abrir para editar um mês." /></div>
+        <SheetFrame className="px-5 pb-5">
+          <table className="sheet min-w-[640px]">
+            <thead>
+              <tr><th className="text-left">Competência</th><th className="text-right">Faturamento</th><th className="text-right">Tributos</th><th className="text-right">Compras e despesas</th><th className="text-right">Resultado</th><th className="w-24" aria-label="Ações" /></tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-              {history.map((item) => {
-                // SEPARA O FATURAMENTO OPERACIONAL DO GRUPO 6
-                const operationalRev = 
-                  Number(item.revenue_resale || 0) + 
-                  Number(item.revenue_product || 0) + 
-                  Number(item.revenue_service || 0) + 
-                  Number(item.revenue_rent || 0);
-                  
-                const otherRev = Number(item.revenue_other || 0);
-
-                const totalTax = 
-                  Number(item.tax_icms || 0) + 
-                  Number(item.tax_difal || 0) + 
-                  Number(item.tax_iss || 0) + 
-                  Number(item.tax_pis || 0) + 
-                  Number(item.tax_cofins || 0) + 
-                  Number(item.tax_csll || 0) + 
-                  Number(item.tax_irpj || 0) + 
-                  Number(item.tax_additional_irpj || 0) + 
-                  Number(item.tax_fust || 0) + 
-                  Number(item.tax_funtell || 0);
-
-                const totalCost = Number(item.purchases_total || 0) + Number(item.expenses_total || 0);
-                
-                // O LUCRO CONTABILIZA TUDO O QUE ENTROU E SAIU
-                const itemProfit = (operationalRev + otherRev) - totalTax - totalCost;
-
+            <tbody>
+              {history.map((h) => {
+                const t = totalsOf(fromEntry(h));
+                const key = h.period_start.slice(0, 7);
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-10 py-6 font-bold uppercase">{item.period_start.substring(0, 7)}</td>
-                    <td className="px-10 py-6 text-right font-mono">{formatCurrency(operationalRev)}</td>
-                    <td className={`px-10 py-6 text-right font-mono font-black ${itemProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatCurrency(itemProfit)}</td>
-                    <td className="px-10 py-6 text-center flex justify-center gap-2">
-                        <button onClick={() => setCurrentMonth(item.period_start.substring(0, 7))} className="p-2.5 text-slate-300 hover:text-blue-600 transition-colors"><FiEdit3 size={18} /></button>
-                        <button onClick={() => handleDeleteEntry(item.period_start)} className="p-2.5 text-slate-300 hover:text-rose-600 transition-colors"><FiTrash2 size={18} /></button>
+                  <tr key={h.id} className={key === month ? 'bg-brand-soft' : undefined}>
+                    <td className="cell font-medium">{monthLabel(key)}</td>
+                    <td className="cell text-right num">{money(t.operational)}</td>
+                    <td className="cell text-right num">{money(t.taxes)}</td>
+                    <td className="cell text-right num">{money(t.costs)}</td>
+                    <td className={`cell text-right num font-medium ${t.profit >= 0 ? 'text-pos' : 'text-neg'}`}>{money(t.profit)}</td>
+                    <td className="cell">
+                      <div className="flex justify-end gap-1">
+                        <IconButton size="sm" icon={Pencil} label={`Abrir ${monthLabel(key)}`} onClick={() => changeMonth(key)} />
+                        <IconButton size="sm" variant="danger" icon={Trash2} label={`Excluir ${monthLabel(key)}`} onClick={() => removeMonth(h.period_start)} />
+                      </div>
                     </td>
                   </tr>
                 );
               })}
+              {history.length === 0 && <tr><td colSpan={6} className="calc text-center text-ink-3 h-12">Nenhum mês lançado ainda.</td></tr>}
             </tbody>
           </table>
-          {history.length === 0 && (
-            <div className="p-20 text-center font-bold text-slate-300 italic text-xs uppercase tracking-[0.3em]">
-              Nenhum registro encontrado.
-            </div>
-          )}
-        </div>
-      </div>
+        </SheetFrame>
+      </Card>
 
-      {/* MODAL DE CLONAGEM */}
-      <AnimatePresence>
-        {showCloneModal && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
-                <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative">
-                    <button onClick={() => setShowCloneModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><FiX size={20}/></button>
-                    
-                    <div className="text-center mb-6">
-                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><FiCopy size={32}/></div>
-                        <h3 className="text-sm font-black text-slate-900">Clonar Competência</h3>
-                        <p className="text-xs text-slate-500 font-medium mt-2">Copia todos os lançamentos de um mês para outro.</p>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem (Copia deste)</label>
-                            <input disabled value={currentMonth} className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-500 text-center border-none outline-none"/>
-                        </div>
-                        
-                        <div className="flex justify-center"><FiArrowDownCircle className="text-slate-300"/></div>
-                        
-                        <div>
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino (Cola neste)</label>
-                            <input 
-                                type="month" 
-                                value={cloneTarget} 
-                                onChange={(e) => setCloneTarget(e.target.value)}
-                                className="w-full p-3 bg-white border-2 border-amber-100 focus:border-amber-400 rounded-xl font-bold text-slate-700 text-center outline-none transition-colors"
-                            />
-                        </div>
-
-                        <button 
-                            type="button" 
-                            onClick={async () => {
-                                if (!cloneTarget) return alert("Por favor, selecione o mês de destino.");
-                                if (cloneTarget === currentMonth) return alert("O mês de destino deve ser diferente da origem.");
-
-                                try {
-                                    const btn = document.getElementById('btn-clonar');
-                                    if(btn) btn.innerText = "Clonando...";
-
-                                    await axios.post(`${BASE_URL}/api/entries/clone`, {
-                                        companyId,
-                                        sourceMonth: currentMonth,
-                                        targetMonth: cloneTarget
-                                    });
-
-                                    alert("✅ Mês clonado com sucesso!");
-                                    setShowCloneModal(false);
-                                    setCloneTarget(''); 
-                                    
-                                    const resHist = await axios.get(`${BASE_URL}/api/entries/history?companyId=${companyId}`);
-                                    setHistory(resHist.data);
-
-                                } catch (err) {
-                                    const msg = err.response?.data?.error || err.message;
-                                    alert(`❌ Erro ao clonar: ${msg}`);
-                                } finally {
-                                    const btn = document.getElementById('btn-clonar');
-                                    if(btn) btn.innerText = "Confirmar Cópia";
-                                }
-                            }}
-                            id="btn-clonar"
-                            className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-200 transition-all mt-2 active:scale-95"
-                        >
-                            Confirmar Cópia
-                        </button>
-                    </div>
-                </motion.div>
-            </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        open={cloneOpen}
+        onClose={() => setCloneOpen(false)}
+        title="Copiar mês"
+        description={`Copia os valores e o detalhamento de ${monthLabel(month)} para outro mês. Útil quando os meses se repetem.`}
+        size="sm"
+        footer={<><Button onClick={() => setCloneOpen(false)}>Cancelar</Button><Button variant="primary" onClick={cloneMonth} disabled={!cloneTarget || cloneTarget === month}>Copiar</Button></>}
+      >
+        <Field label="Copiar para" hint={cloneTarget === month ? 'Escolha um mês diferente do atual.' : undefined}>
+          <Input type="month" value={cloneTarget} onChange={(e) => setCloneTarget(e.target.value)} />
+        </Field>
+      </Modal>
 
       <ImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        onSuccess={handleImportSuccess}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
         companyId={companyId}
-        apiBase={BASE_URL}
+        onSuccess={() => {
+          setHistoryVersion((v) => v + 1);
+          setEntryVersion((v) => v + 1);
+        }}
       />
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-      `}} />
-    </div>
+    </Page>
   );
 };
 
