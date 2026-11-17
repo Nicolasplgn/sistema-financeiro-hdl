@@ -1,10 +1,12 @@
 // Aba MARKUP: a aba "MARK UP LUCRO REAL - <canal> <modelo>" da planilha.
 import React, { useMemo, useState } from 'react';
 import { RotateCcw, Save } from 'lucide-react';
-import { Alert, Badge, Button, Loading, Tabs, Toggle } from '../../components/ui';
+import { Alert, Badge, Button, Card, CardHeader, Field, Loading, Select, Tabs, Toggle } from '../../components/ui';
 import { CalcCell, NumberCell, SelectCell, SheetFrame } from '../../components/ui/sheet';
 import { brl, money, pct, qty, REGIME_LABEL, STATUS_LABEL } from '../../utils/format';
 import ModelChannelPicker from './ModelChannelPicker';
+import ChannelComparison from './ChannelComparison';
+import { CompositionBar, PriceFlow } from './PriceAnatomy';
 import { usePriceCalc } from './usePriceCalc';
 
 // Linha do markup → campo do canal no painel.
@@ -128,10 +130,22 @@ const MarkupSheet = ({ ctx }) => {
           <h2 className="text-[15px] font-semibold text-ink">Markup</h2>
           <p className="text-[13px] text-ink-2 mt-0.5">Preço de venda sugerido = preço de compra ÷ (1 − total dos encargos sobre a venda).</p>
         </div>
-        <Tabs value={view} onChange={setView} items={[{ id: 'um', label: 'Um modelo' }, { id: 'todos', label: 'Tabela de preços' }]} />
+        <Tabs value={view} onChange={setView} items={[{ id: 'um', label: 'Um modelo em um canal' }, { id: 'canais', label: 'Comparar canais' }, { id: 'todos', label: 'Tabela de preços' }]} />
       </div>
 
-      {view === 'todos' ? (
+      {view === 'canais' && (
+        <>
+          <Field label="Modelo" className="max-w-md">
+            <Select value={selection.productId ?? ''} onChange={(e) => setSelection({ ...selection, productId: Number(e.target.value) })}>
+              {painel.produtos.map((p, i) => <option key={p.id} value={p.id}>{i + 1} · {p.sku ? `${p.sku} — ` : ''}{p.name}</option>)}
+            </Select>
+          </Field>
+          <p className="text-[13px] text-ink-2">As abas MARKUP e TRIBUTOS de cada canal, lado a lado, para o mesmo modelo: onde o preço sobe, onde o imposto pesa e qual canal dá mais lucro no mês.</p>
+          <ChannelComparison painel={painel} productId={selection.productId} version={painel} />
+        </>
+      )}
+
+      {view === 'canais' ? null : view === 'todos' ? (
         <>
           <PriceMatrix painel={painel} onOpen={(productId, channelId) => { setSelection({ productId, channelId }); setView('um'); }} />
           <p className="text-xs text-ink-3">Preço com IPI. Clique em uma célula para abrir o markup daquele modelo e canal.</p>
@@ -159,6 +173,17 @@ const MarkupSheet = ({ ctx }) => {
           {simulating && <Alert tone="info">Simulação ligada: os valores alterados aparecem em destaque e não mudam o painel até você clicar em “Gravar no painel”.</Alert>}
 
           {!result && loading && <Loading label="Calculando…" />}
+
+          {m && canal && m.status === 'OK' && (
+            <Card>
+              <CardHeader title="Como este preço se forma" description="O mesmo cálculo da aba MARKUP da planilha, passo a passo." />
+              <PriceFlow m={m} />
+              <div className="mt-5">
+                <p className="text-sm font-medium text-ink mb-2">De cada {brl(m.preco_venda_sugerido)} do preço sugerido</p>
+                <CompositionBar m={m} />
+              </div>
+            </Card>
+          )}
 
           {m && canal && (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">

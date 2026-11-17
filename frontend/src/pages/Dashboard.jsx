@@ -1,6 +1,6 @@
 // Visão geral: faturamento, saídas e lucro do período, da empresa ou do grupo.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
@@ -46,6 +46,7 @@ const Dashboard = ({ companyId, groupId, companies }) => {
   });
   const [report, setReport] = useState(null);
   const [ranking, setRanking] = useState({ clients: [], suppliers: [] });
+  const [previous, setPrevious] = useState(null);
   const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);
   const printRef = useRef(null);
@@ -64,11 +65,13 @@ const Dashboard = ({ companyId, groupId, companies }) => {
     let alive = true;
     const startDate = `${period.start}-01`;
     const endDate = lastDay(period.end);
+    const back = (d) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`;
     Promise.all([
       http.post('/report', { companyIds, startDate, endDate }),
       companyId ? http.get('/reports/partners-ranking', { params: { companyId, startDate, endDate } }) : Promise.resolve({ data: { clients: [], suppliers: [] } }),
+      http.post('/report', { companyIds, startDate: back(startDate), endDate: lastDay(back(period.end)) }),
     ])
-      .then(([r, rk]) => { if (alive) { setReport(r.data); setRanking(rk.data); setError(null); setLoadedKey(key); } })
+      .then(([r, rk, prev]) => { if (alive) { setReport(r.data); setRanking(rk.data); setPrevious(prev.data); setError(null); setLoadedKey(key); } })
       .catch((e) => alive && setError(errorMessage(e, 'Erro ao carregar o relatório.')));
     return () => { alive = false; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -87,6 +90,10 @@ const Dashboard = ({ companyId, groupId, companies }) => {
   }), { ICMS: 0, PIS: 0, COFINS: 0, ISS: 0, 'IRPJ + CSLL': 0 });
   const otherTaxes = summary.totalTaxes - Object.values(taxTotals).reduce((a, b) => a + b, 0);
   const catTotal = categories.reduce((a, c) => a + Number(c.total), 0);
+  const ps = previous?.months?.length ? previous.summary : null;
+  const delta = (cur, prev) => (ps && prev ? `${cur >= prev ? '▲' : '▼'} ${pct(Math.abs(((cur - prev) / Math.abs(prev)) * 100), 1)} vs ${Number(period.start.slice(0, 4)) - 1}` : null);
+  const carga = summary.totalRevenue > 0 ? (summary.totalTaxes / summary.totalRevenue) * 100 : null;
+  const topCategories = categories.slice(0, 8);
 
   // ------------------------------------------------------------------ exportações
   const exportExcel = async () => {
@@ -146,11 +153,12 @@ const Dashboard = ({ companyId, groupId, companies }) => {
           <Card><EmptyState title="Nenhum lançamento neste período" description="Registre os meses em “Lançamentos do mês” ou importe a DRE/balancetes da contabilidade." /></Card>
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <Stat label="Faturamento" value={brl(summary.totalRevenue)} icon={Wallet} hint="Receita operacional bruta" />
-              <Stat label="Saídas" value={brl(saidas)} icon={TrendingDown} hint="Impostos + compras + despesas" tone="neg" />
-              <Stat label="Lucro líquido" value={brl(summary.totalProfit)} icon={TrendingUp} tone={summary.totalProfit >= 0 ? 'pos' : 'neg'} hint="Receitas − saídas" />
-              <Stat label="Margem líquida" value={pct(margin, 1)} icon={Percent} hint="Lucro ÷ faturamento" />
+            <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
+              <Stat label="Faturamento" value={brl(summary.totalRevenue)} icon={Wallet} hint={delta(summary.totalRevenue, ps?.totalRevenue) || 'Receita operacional bruta'} />
+              <Stat label="Saídas" value={brl(saidas)} icon={TrendingDown} hint={delta(saidas, ps && ps.totalTaxes + ps.totalCosts) || 'Impostos + compras + despesas'} tone="neg" />
+              <Stat label="Lucro líquido" value={brl(summary.totalProfit)} icon={TrendingUp} tone={summary.totalProfit >= 0 ? 'pos' : 'neg'} hint={delta(summary.totalProfit, ps?.totalProfit) || 'Receitas − saídas'} />
+              <Stat label="Margem líquida" value={pct(margin, 1)} icon={Percent} hint={ps && ps.totalRevenue ? `${pct((ps.totalProfit / ps.totalRevenue) * 100, 1)} no mesmo período de ${Number(period.start.slice(0, 4)) - 1}` : 'Lucro ÷ faturamento'} />
+              <Stat label="Carga tributária" value={pct(carga, 1)} icon={Landmark} tone="warn" hint={`${brl(summary.totalTaxes)} em impostos`} />
               <Stat label="Saídas de capital" value={brl(summary.totalPatrimonial)} icon={Landmark} tone="warn" hint="Empréstimos e dívidas (fora da DRE)" />
             </div>
             {summary.totalPatrimonial > 0 && (
@@ -191,6 +199,48 @@ const Dashboard = ({ companyId, groupId, companies }) => {
                     options={baseChartOptions({ stacked: true })}
                   />
                 </div>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardHeader title="Matriz tributária" description="Cada imposto, mês a mês." />
+                <div className="h-80">
+                  <Bar
+                    data={{
+                      labels,
+                      datasets: [
+                        { label: 'ICMS / DAS', data: months.map((m) => m.tax_icms), backgroundColor: SERIES.revenue },
+                        { label: 'PIS', data: months.map((m) => m.tax_pis), backgroundColor: SERIES.taxes },
+                        { label: 'COFINS', data: months.map((m) => m.tax_cofins), backgroundColor: SERIES.profit },
+                        { label: 'ISS', data: months.map((m) => m.tax_iss), backgroundColor: SERIES.purchases },
+                        { label: 'IRPJ + CSLL', data: months.map((m) => m.tax_irpj_csll), backgroundColor: SERIES.loss },
+                        { label: 'Outros', data: months.map((m) => Math.max(m.totalTaxes - m.tax_icms - m.tax_pis - m.tax_cofins - m.tax_iss - m.tax_irpj_csll, 0)), backgroundColor: '#94a3b8' },
+                      ],
+                    }}
+                    options={baseChartOptions({ stacked: true })}
+                  />
+                </div>
+              </Card>
+              <Card>
+                <CardHeader title="Principais contas do período" description="Maiores entradas e saídas detalhadas (dos balancetes e do detalhamento analítico)." />
+                {topCategories.length === 0 ? <p className="text-sm text-ink-3">Nenhum item detalhado no período.</p> : (
+                  <div className="h-80">
+                    <Doughnut
+                      data={{
+                        labels: topCategories.map((c) => `${c.type === 'REVENUE' ? '+' : '−'} ${c.name}`),
+                        datasets: [{ data: topCategories.map((c) => Number(c.total)), backgroundColor: SERIES.palette, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(), borderWidth: 2 }],
+                      }}
+                      options={{
+                        maintainAspectRatio: false, cutout: '62%',
+                        plugins: {
+                          legend: { position: 'right', labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--ink-2').trim(), boxWidth: 10, font: { size: 11 } } },
+                          tooltip: { callbacks: { label: (c) => `${c.label}: ${brl(c.raw)}` } },
+                        },
+                      }}
+                    />
+                  </div>
+                )}
               </Card>
             </div>
 
